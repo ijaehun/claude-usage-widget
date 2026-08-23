@@ -327,13 +327,20 @@
                         <span class="bar-meter"><span class="bar-fill ram" id="barRamFill" style="width:0%"></span></span>
                         <span class="bar-val" id="barRamPct">--</span>
                     </span>
-                    <button class="bar-icon-btn" id="barUndockBtn" title="Undock (back to widget)">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <polyline points="4 14 10 14 10 20" />
-                            <polyline points="20 10 14 10 14 4" />
-                        </svg>
-                    </button>
                 </div>
+
+                <!-- Outside .bar-group-system on purpose. A narrow display (a
+                     rotated secondary monitor, say) makes the strip too short
+                     for the full layout, and .bar-content clips the overflow —
+                     which would take the only way out of bar mode with it.
+                     Pinned here, it is the last thing to lose space, never the
+                     first. -->
+                <button class="bar-icon-btn bar-undock" id="barUndockBtn" title="Undock (back to widget)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="4 14 10 14 10 20" />
+                        <polyline points="20 10 14 10 14 4" />
+                    </svg>
+                </button>
             </div>
 
             <!-- Settings Overlay (normal mode) -->

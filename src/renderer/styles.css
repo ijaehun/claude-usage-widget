@@ -1905,6 +1905,11 @@ body.bar-mode .compact-content {
     align-items: center;
     gap: 14px;
     white-space: nowrap;
+    /* Let the groups be what gives when the strip is too short. Without
+       min-width:0 a nowrap flex item refuses to shrink below its content and
+       pushes whatever follows out of .bar-content overflow:hidden. */
+    min-width: 0;
+    overflow: hidden;
 }
 
 /* The middle is just empty space. It is deliberately NOT a drag region: a
@@ -1988,6 +1993,36 @@ body.bar-mode .compact-content {
 
 .bar-icon-btn:hover {
     color: #e5e5e5;
+}
+
+/* The one control that must never be clipped — it is the only way back out of
+   bar mode when there is no tray icon. */
+.bar-undock {
+    flex: 0 0 auto;
+}
+
+/* Narrow strips: a rotated secondary monitor at 125% leaves roughly 1150 CSS
+   px, well under the ~1220 the full-size layout wants. Scoped to bar mode so
+   the 560px widget window never matches these. Numbers are tuned against the
+   measured natural width, not guessed. */
+@media (max-width: 1300px) {
+    body.bar-mode .bar-content { padding: 0 8px; gap: 6px; }
+    body.bar-mode .bar-group { gap: 9px; }
+    body.bar-mode .bar-meter { width: 40px; }
+}
+
+@media (max-width: 1080px) {
+    body.bar-mode .bar-brand { display: none; }
+    body.bar-mode .bar-group { gap: 7px; }
+    body.bar-mode .bar-meter { width: 32px; }
+}
+
+/* Last resort. The system fills stay colour-coded (blue/green/amber/pink), so
+   dropping their labels keeps them readable where the text no longer fits. */
+@media (max-width: 900px) {
+    body.bar-mode .bar-group-system .bar-key { display: none; }
+    body.bar-mode .bar-group-system .bar-item { gap: 4px; }
+    body.bar-mode .bar-val { min-width: 26px; }
 }
 
 /* Bar mode is a dark chrome element by design — it sits against the desktop
