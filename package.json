@@ -99,6 +99,9 @@
       "icon": "assets/logo.png",
       "category": "Utility",
       "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
-    }
+    },
+    "asarUnpack": [
+      "**/node_modules/@koromix/**"
+    ]
   }
 }
