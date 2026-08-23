@@ -123,6 +123,9 @@ const elements = {
     barSessionPct: document.getElementById('barSessionPct'),
     barWeeklyFill: document.getElementById('barWeeklyFill'),
     barWeeklyPct: document.getElementById('barWeeklyPct'),
+    barFableItem: document.getElementById('barFableItem'),
+    barFableFill: document.getElementById('barFableFill'),
+    barFablePct: document.getElementById('barFablePct'),
     barResetsIn: document.getElementById('barResetsIn'),
     barCpuFill: document.getElementById('barCpuFill'),
     barCpuPct: document.getElementById('barCpuPct'),
@@ -970,6 +973,16 @@ function updateBarUsage(data) {
         Math.min(Math.max(data.five_hour?.utilization || 0, 0), 100));
     renderBarItem(elements.barWeeklyFill, elements.barWeeklyPct,
         Math.min(Math.max(data.seven_day?.utilization || 0, 0), 100));
+    // Fable draws on its own weekly pool, and only accounts that have one get
+    // the field at all — same rule the compact view uses, so the item drops
+    // out of the strip entirely rather than sitting there at 0%.
+    if (data.seven_day_fable) {
+        elements.barFableItem.style.display = '';
+        renderBarItem(elements.barFableFill, elements.barFablePct,
+            Math.min(Math.max(data.seven_day_fable.utilization || 0, 0), 100));
+    } else {
+        elements.barFableItem.style.display = 'none';
+    }
     // The session countdown is already rendered for the normal view; mirror
     // its text rather than recomputing the same value a second way.
     elements.barResetsIn.textContent = elements.sessionTimeText.textContent || '--:--';

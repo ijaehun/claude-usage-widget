@@ -1952,6 +1952,7 @@ body.bar-mode .compact-content {
 }
 
 .bar-fill.weekly { background: linear-gradient(90deg, #6366f1 0%, #818cf8 100%); }
+.bar-fill.fable  { background: linear-gradient(90deg, #d946ef 0%, #e879f9 100%); }
 .bar-fill.cpu    { background: linear-gradient(90deg, #38bdf8 0%, #7dd3fc 100%); }
 .bar-fill.gpu    { background: linear-gradient(90deg, #34d399 0%, #6ee7b7 100%); }
 .bar-fill.vram   { background: linear-gradient(90deg, #fbbf24 0%, #fcd34d 100%); }
