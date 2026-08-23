@@ -5,7 +5,6 @@ let countdownInterval = null;
 let latestUsageData = null;
 let isExpanded = false;
 let isCompactMode = false;
-let compactSpendOpen = false; // spend row toggled open within compact mode
 let _settingsOpenedFromCompact = false;
 let usageChart = null;
 let graphVisible = false;
@@ -16,6 +15,18 @@ const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const WIDGET_HEIGHT_COLLAPSED = 155;
 const WIDGET_ROW_HEIGHT = 30;
 const GRAPH_HEIGHT = 232;
+
+// --- System monitor (local machine CPU / GPU / VRAM / RAM) ---
+let sysmonTimer = null;
+let isBarMode = false;
+// 4 rows x 22px + section padding/border. Kept as one constant so resizeWidget
+// stays a sum of section heights rather than a pile of magic numbers.
+const SYSMON_HEIGHT = 107;
+// Machine stats move far faster than Claude usage, so this row polls on its own
+// short interval rather than riding the 5-minute usage refresh.
+const SYSMON_INTERVAL = 2000;
+// Above this a resource is considered under pressure and its bar turns red.
+const SYSMON_HOT_THRESHOLD = 85;
 
 // Elapsed-time ring thresholds (session/weekly/extra-row countdown circles).
 // Deliberately hardcoded and independent from the user-configurable
@@ -79,7 +90,48 @@ const elements = {
     settingsOverlay: document.getElementById('settingsOverlay'),
     closeSettingsBtn: document.getElementById('closeSettingsBtn'),
     logoutBtn: document.getElementById('logoutBtn'),
-    coffeeBtn: document.getElementById('coffeeBtn'),
+
+    sysmonSection: document.getElementById('sysmonSection'),
+    cpuLabel: document.getElementById('cpuLabel'),
+    cpuFill: document.getElementById('cpuFill'),
+    cpuPct: document.getElementById('cpuPct'),
+    cpuDetail: document.getElementById('cpuDetail'),
+    gpuLabel: document.getElementById('gpuLabel'),
+    gpuFill: document.getElementById('gpuFill'),
+    gpuPct: document.getElementById('gpuPct'),
+    gpuDetail: document.getElementById('gpuDetail'),
+    vramFill: document.getElementById('vramFill'),
+    vramPct: document.getElementById('vramPct'),
+    vramDetail: document.getElementById('vramDetail'),
+    ramFill: document.getElementById('ramFill'),
+    ramPct: document.getElementById('ramPct'),
+    ramDetail: document.getElementById('ramDetail'),
+
+    compactSysmon: document.getElementById('compactSysmon'),
+    compactCpuPct: document.getElementById('compactCpuPct'),
+    compactGpuPct: document.getElementById('compactGpuPct'),
+    compactRamPct: document.getElementById('compactRamPct'),
+
+    dockBtn: document.getElementById('dockBtn'),
+    barModeToggle: document.getElementById('barModeToggle'),
+    barModeCol: document.getElementById('barModeCol'),
+    barModeLabel: document.getElementById('barModeLabel'),
+    barContent: document.getElementById('barContent'),
+    barUndockBtn: document.getElementById('barUndockBtn'),
+    barRefreshBtn: document.getElementById('barRefreshBtn'),
+    barSessionFill: document.getElementById('barSessionFill'),
+    barSessionPct: document.getElementById('barSessionPct'),
+    barWeeklyFill: document.getElementById('barWeeklyFill'),
+    barWeeklyPct: document.getElementById('barWeeklyPct'),
+    barResetsIn: document.getElementById('barResetsIn'),
+    barCpuFill: document.getElementById('barCpuFill'),
+    barCpuPct: document.getElementById('barCpuPct'),
+    barGpuFill: document.getElementById('barGpuFill'),
+    barGpuPct: document.getElementById('barGpuPct'),
+    barVramFill: document.getElementById('barVramFill'),
+    barVramPct: document.getElementById('barVramPct'),
+    barRamFill: document.getElementById('barRamFill'),
+    barRamPct: document.getElementById('barRamPct'),
     autoStartCol: document.getElementById('autoStartCol'),
     autoStartToggle: document.getElementById('autoStartToggle'),
     autoStartHint: document.getElementById('autoStartHint'),
@@ -95,11 +147,7 @@ const elements = {
     orgSelector: document.getElementById('orgSelector'),
     orgSelectorCol: document.getElementById('orgSelectorCol'),
 
-    updateBanner: document.getElementById('updateBanner'),
-    updateBannerText: document.getElementById('updateBannerText'),
-    updateBannerDismiss: document.getElementById('updateBannerDismiss'),
     settingsVersionLabel: document.getElementById('settingsVersionLabel'),
-    settingsUpdateLink: document.getElementById('settingsUpdateLink'),
     usageAlertsToggle: document.getElementById('usageAlertsToggle'),
     compactModeToggle: document.getElementById('compactModeToggle'),
     compactModeToggleCompact: document.getElementById('compactModeToggleCompact'),
@@ -113,11 +161,6 @@ const elements = {
     compactFableRow: document.getElementById('compactFableRow'),
     compactFableFill: document.getElementById('compactFableFill'),
     compactFablePct: document.getElementById('compactFablePct'),
-    compactSpendToggle: document.getElementById('compactSpendToggle'),
-    compactSpendArrow: document.getElementById('compactSpendArrow'),
-    compactSpendRow: document.getElementById('compactSpendRow'),
-    compactSpendFill: document.getElementById('compactSpendFill'),
-    compactSpendPct: document.getElementById('compactSpendPct'),
     compactSettingsOverlay: document.getElementById('compactSettingsOverlay'),
     closeCompactSettingsBtn: document.getElementById('closeCompactSettingsBtn')
 };
@@ -178,8 +221,6 @@ async function init() {
     }
     warnThreshold = settings.warnThreshold;
     dangerThreshold = settings.dangerThreshold;
-    compactSpendOpen = !!settings.compactSpendOpen;
-    applyCompactSpendRow();
 
     // Restore compact mode from saved settings
     if (settings.compactMode) {
@@ -221,14 +262,31 @@ async function init() {
         showLoginRequired();
     }
 
-    // Populate version label then check for updates after a short delay
+    // Populate the version label shown in settings
     const version = await window.electronAPI.getAppVersion();
     if (elements.settingsVersionLabel) {
         elements.settingsVersionLabel.textContent = `Application Version: v${version}`;
     }
-    setTimeout(checkForUpdate, 2000);
-    // Also check once every 24 hours for users who never close the app
-    setInterval(checkForUpdate, 24 * 60 * 60 * 1000);
+
+    // The system monitor is always on in both views, so it starts with the app
+    // and runs for its lifetime.
+    startSysmonPolling();
+
+    // Reflect docking that is already in effect (e.g. after a renderer reload),
+    // and disable the control outright where the platform cannot support it.
+    try {
+        const bar = await window.electronAPI.getBarMode();
+        if (bar) {
+            elements.barModeToggle.checked = !!bar.enabled;
+            elements.barModeToggle.disabled = !bar.supported;
+            if (!bar.supported) {
+                elements.barModeLabel.title = 'Windows only';
+                elements.barModeCol.style.opacity = '0.5';
+                elements.dockBtn.style.display = 'none';
+            }
+            if (bar.enabled) applyBarMode(true);
+        }
+    } catch { /* bar mode unsupported — stay in the normal layout */ }
 
     // Startup restore complete — allow _saveViewState to persist changes
     appInitializing = false;
@@ -282,6 +340,34 @@ function setupEventListeners() {
         if (!isCompactMode) resizeWidget();
         _saveViewState();
     });
+
+    elements.dockBtn.addEventListener('click', async () => {
+        // One-way: the title bar is hidden while docked, so undocking is the
+        // bar's own button. Nothing here needs a toggle.
+        await window.electronAPI.setBarMode(true);
+    });
+
+    elements.barRefreshBtn.addEventListener('click', async () => {
+        // Same fetch the title-bar refresh runs; the bar has no title bar of
+        // its own, so this is the only way to force a refresh while docked.
+        elements.barRefreshBtn.classList.add('spinning');
+        await fetchUsageData();
+        elements.barRefreshBtn.classList.remove('spinning');
+    });
+
+    elements.barUndockBtn.addEventListener('click', () => {
+        window.electronAPI.setBarMode(false);
+    });
+
+    elements.barModeToggle.addEventListener('change', async () => {
+        const achieved = await window.electronAPI.setBarMode(elements.barModeToggle.checked);
+        // Docking can be refused; snap the checkbox back to reality.
+        elements.barModeToggle.checked = !!achieved;
+    });
+
+    // main.js is the source of truth for whether docking actually succeeded —
+    // the shell can refuse — so the layout follows this event, never the click.
+    window.electronAPI.onBarModeChanged((enabled) => applyBarMode(enabled));
 
     elements.minimizeBtn.addEventListener('click', () => {
         window.electronAPI.minimizeWindow();
@@ -342,10 +428,6 @@ function setupEventListeners() {
         showLoginRequired();
     });
 
-    elements.coffeeBtn.addEventListener('click', () => {
-        window.electronAPI.openExternal('https://paypal.me/SlavomirDurej?country.x=GB&locale.x=en_GB');
-    });
-
     // Theme buttons
     elements.themeBtns.forEach(btn => {
         btn.addEventListener('click', () => {
@@ -384,18 +466,6 @@ function setupEventListeners() {
         showLoginRequired();
     });
 
-    // Update banner
-    elements.updateBannerDismiss.addEventListener('click', () => {
-        elements.updateBanner.style.display = 'none';
-        resizeWidget();
-    });
-    elements.updateBannerText.addEventListener('click', () => {
-        window.electronAPI.openExternal(`https://github.com/SlavomirDurej/claude-usage-widget/releases/latest`);
-    });
-    elements.settingsUpdateLink.addEventListener('click', () => {
-        window.electronAPI.openExternal(`https://github.com/SlavomirDurej/claude-usage-widget/releases/latest`);
-    });
-
     // Compact mode — collapse chevron (normal → compact)
     elements.compactCollapseBtn.addEventListener('click', async () => {
         applyCompactMode(true);
@@ -406,29 +476,6 @@ function setupEventListeners() {
     elements.compactExpandBtn.addEventListener('click', async () => {
         applyCompactMode(false);
         await _saveCompactSetting(false);
-    });
-
-    // Compact mode — spend row chevron (show/hide the Spend bar)
-    elements.compactSpendToggle.addEventListener('click', async () => {
-        compactSpendOpen = !compactSpendOpen;
-        applyCompactSpendRow();
-
-        // Persist immediately (not debounced): main's getCompactHeight() reads
-        // this setting when re-sizing right below, so it must be stored first.
-        const settings = window._cachedSettings || await window.electronAPI.getSettings();
-        settings.compactSpendOpen = compactSpendOpen;
-        window._cachedSettings = settings;
-        await window.electronAPI.saveSettings(settings);
-
-        // Re-assert compact bounds so the window grows/shrinks for the row
-        if (isCompactMode) window.electronAPI.setCompactMode(true);
-
-        // Opening the row: fetch fresh spend data right away — collapsed
-        // compact mode doesn't poll the spend endpoints, so whatever is in
-        // latestUsageData.extra_usage may be stale or missing until this lands
-        if (compactSpendOpen) {
-            await fetchUsageData({ forceExtended: true });
-        }
     });
 
     // Compact mode toggle in normal settings panel — deferred to Done click
@@ -596,7 +643,6 @@ const EXTRA_ROW_CONFIG = {
     seven_day_cowork: { label: 'Cowork (7d)', color: 'cowork' },
     seven_day_omelette: { label: 'Design (7d)', color: 'design' },
     seven_day_oauth_apps: { label: 'OAuth Apps (7d)', color: 'oauth' },
-    extra_usage: { label: 'Extra Usage', color: 'extra' },
 };
 
 // Expiry warning thresholds for the credits row (days until next_expires_at)
@@ -849,20 +895,176 @@ function refreshExtraTimers() {
     });
 }
 
-const BANNER_HEIGHT = 28;
+// --- System monitor rendering -------------------------------------------------
+
+function formatGB(bytes) {
+    return (bytes / 1073741824).toFixed(1) + ' GB';
+}
+
+/**
+ * Paint one monitor row. Passing percent === null renders the row as having no
+ * reading (dashes, empty bar) rather than showing a misleading 0%.
+ */
+function renderSysmonRow(fillEl, pctEl, detailEl, percent, detailText) {
+    const row = fillEl.closest('.sysmon-row');
+    const hasValue = percent !== null && percent !== undefined && !Number.isNaN(percent);
+
+    if (row) row.classList.toggle('unavailable', !hasValue);
+    fillEl.style.width = hasValue ? Math.min(100, Math.max(0, percent)) + '%' : '0%';
+    fillEl.classList.toggle('hot', hasValue && percent >= SYSMON_HOT_THRESHOLD);
+    pctEl.textContent = hasValue ? Math.round(percent) + '%' : '--';
+    detailEl.textContent = detailText || '--';
+}
+
+/**
+ * Paint one value in the compact strip. Compact has no bars, so "hot" shows as
+ * a red number instead of a red meter.
+ */
+function renderCompactSysVal(el, percent, tooltip) {
+    const hasValue = percent !== null && percent !== undefined && !Number.isNaN(percent);
+    el.textContent = hasValue ? Math.round(percent) + '%' : '--';
+    el.classList.toggle('hot', hasValue && percent >= SYSMON_HOT_THRESHOLD);
+    el.classList.toggle('unavailable', !hasValue);
+    if (tooltip) el.parentElement.title = tooltip;
+}
+
+/** Paint one meter+value pair in the docked bar. */
+function renderBarItem(fillEl, valEl, percent, suffix = '%') {
+    const has = percent !== null && percent !== undefined && !Number.isNaN(percent);
+    fillEl.style.width = has ? Math.min(100, Math.max(0, percent)) + '%' : '0%';
+    fillEl.classList.toggle('hot', has && percent >= SYSMON_HOT_THRESHOLD);
+    valEl.textContent = has ? Math.round(percent) + suffix : '--';
+    valEl.classList.toggle('hot', has && percent >= SYSMON_HOT_THRESHOLD);
+    valEl.classList.toggle('unavailable', !has);
+}
+
+/**
+ * Bar mode replaces the whole widget chrome rather than sitting inside it, so
+ * this swaps the body class and lets CSS hide the normal/compact views.
+ */
+function applyBarMode(enabled) {
+    isBarMode = enabled;
+    document.body.classList.toggle('bar-mode', enabled);
+    elements.barContent.style.display = enabled ? 'flex' : 'none';
+    if (enabled) {
+        refreshSystemStats();
+        if (latestUsageData) updateBarUsage(latestUsageData);
+        return;
+    }
+
+    // Coming back from the bar: main.js restored the pre-dock position but can
+    // only guess the height, since the real one depends on which sections are
+    // open. isBarMode is already false here, so resizeWidget is live again.
+    if (isCompactMode) {
+        window.electronAPI.setCompactMode(true);
+    } else {
+        resizeWidget();
+    }
+    refreshSystemStats();
+}
+
+/** Claude-side values in the docked bar. */
+function updateBarUsage(data) {
+    if (!data) return;
+    renderBarItem(elements.barSessionFill, elements.barSessionPct,
+        Math.min(Math.max(data.five_hour?.utilization || 0, 0), 100));
+    renderBarItem(elements.barWeeklyFill, elements.barWeeklyPct,
+        Math.min(Math.max(data.seven_day?.utilization || 0, 0), 100));
+    // The session countdown is already rendered for the normal view; mirror
+    // its text rather than recomputing the same value a second way.
+    elements.barResetsIn.textContent = elements.sessionTimeText.textContent || '--:--';
+}
+
+async function refreshSystemStats() {
+    let stats;
+    try {
+        stats = await window.electronAPI.getSystemStats();
+    } catch (err) {
+        console.warn('System stats unavailable:', err);
+        return;
+    }
+    if (!stats) return;
+
+    // CPU
+    renderSysmonRow(
+        elements.cpuFill, elements.cpuPct, elements.cpuDetail,
+        stats.cpu.percent,
+        stats.cpu.cores ? stats.cpu.cores + ' threads' : null
+    );
+    // The full model string is too long for the row, so it lives in the tooltip.
+    if (stats.cpu.model) elements.cpuLabel.title = stats.cpu.model;
+
+    // GPU + VRAM. Both rows come from the same nvidia-smi sample, so when the
+    // GPU is unavailable they blank together rather than one going stale.
+    const gpu = stats.gpu || { available: false };
+    if (gpu.available) {
+        renderSysmonRow(
+            elements.gpuFill, elements.gpuPct, elements.gpuDetail,
+            gpu.percent,
+            gpu.tempC !== null && gpu.tempC !== undefined ? gpu.tempC + '°C' : null
+        );
+        renderSysmonRow(
+            elements.vramFill, elements.vramPct, elements.vramDetail,
+            gpu.memPercent,
+            (gpu.memUsedMB / 1024).toFixed(1) + ' / ' + (gpu.memTotalMB / 1024).toFixed(1) + ' GB'
+        );
+    } else {
+        renderSysmonRow(elements.gpuFill, elements.gpuPct, elements.gpuDetail, null, 'n/a');
+        renderSysmonRow(elements.vramFill, elements.vramPct, elements.vramDetail, null, 'n/a');
+        elements.gpuLabel.title = gpu.reason ? 'GPU: ' + gpu.reason : 'GPU';
+    }
+
+    // System RAM
+    renderSysmonRow(
+        elements.ramFill, elements.ramPct, elements.ramDetail,
+        stats.memory.percent,
+        formatGB(stats.memory.usedBytes) + ' / ' + formatGB(stats.memory.totalBytes)
+    );
+
+    // Compact strip. VRAM has no slot of its own here, so it rides along in the
+    // GPU item's tooltip rather than being dropped entirely.
+    renderCompactSysVal(
+        elements.compactCpuPct, stats.cpu.percent,
+        stats.cpu.model || 'CPU'
+    );
+    renderCompactSysVal(
+        elements.compactGpuPct, gpu.available ? gpu.percent : null,
+        gpu.available
+            ? 'VRAM ' + (gpu.memUsedMB / 1024).toFixed(1) + ' / ' + (gpu.memTotalMB / 1024).toFixed(1) + ' GB'
+              + (gpu.tempC !== null && gpu.tempC !== undefined ? '  ·  ' + gpu.tempC + '°C' : '')
+            : (gpu.reason ? 'GPU: ' + gpu.reason : 'GPU')
+    );
+    renderCompactSysVal(
+        elements.compactRamPct, stats.memory.percent,
+        formatGB(stats.memory.usedBytes) + ' / ' + formatGB(stats.memory.totalBytes)
+    );
+
+    // Docked bar
+    renderBarItem(elements.barCpuFill, elements.barCpuPct, stats.cpu.percent);
+    renderBarItem(elements.barGpuFill, elements.barGpuPct, gpu.available ? gpu.percent : null);
+    renderBarItem(elements.barVramFill, elements.barVramPct, gpu.available ? gpu.memPercent : null);
+    renderBarItem(elements.barRamFill, elements.barRamPct, stats.memory.percent);
+}
+
+/** Runs for the app's lifetime — both views always display these stats. */
+function startSysmonPolling() {
+    if (sysmonTimer) return;
+    refreshSystemStats();
+    sysmonTimer = setInterval(refreshSystemStats, SYSMON_INTERVAL);
+}
+
 const EXPAND_OVERHEAD = 28; // margin-top(12) + padding-top(6) + bottom buffer(10)
 
-function resizeWidget(bannerVisible) {
-    const hasBanner = bannerVisible !== undefined
-        ? bannerVisible
-        : elements.updateBanner.style.display !== 'none';
-    const bannerOffset = hasBanner ? BANNER_HEIGHT : 0;
+function resizeWidget() {
+    // The docked bar's size is fixed by the appbar reservation.
+    if (isBarMode) return;
     const extraCount = elements.extraRows.children.length;
     const expandedOffset = isExpanded && extraCount > 0
         ? EXPAND_OVERHEAD + (extraCount * WIDGET_ROW_HEIGHT)
         : 0;
     const graphOffset = graphVisible ? GRAPH_HEIGHT : 0;
-    const totalHeight = WIDGET_HEIGHT_COLLAPSED + expandedOffset + graphOffset + bannerOffset;
+    const sysmonOffset = SYSMON_HEIGHT; // always shown
+    const totalHeight = WIDGET_HEIGHT_COLLAPSED + expandedOffset + graphOffset + sysmonOffset;
     window.electronAPI.resizeWindow(totalHeight);
 }
 
@@ -872,18 +1074,14 @@ function normalizeUsageData(data) {
     // `data` already carries them here. This renderer step only ensures every
     // scoped model has a matching EXTRA_ROW_CONFIG entry: statically known
     // models (Fable) already do; any unknown model is registered generically
-    // (label "<DisplayName> (7d)", fallback color) while keeping extra_usage as
-    // the last row so it stays grouped below the model rows.
+    // (label "<DisplayName> (7d)", fallback color).
     for (const limit of (data && data.limits) || []) {
         if (!limit || limit.kind !== 'weekly_scoped' || limit.percent == null) continue;
         const displayName = limit.scope && limit.scope.model && limit.scope.model.display_name;
         if (!displayName) continue;
         const key = 'seven_day_' + String(displayName).toLowerCase().replace(/[^a-z0-9]+/g, '_');
         if (EXTRA_ROW_CONFIG[key]) continue; // already known (e.g. seven_day_fable)
-        const extraUsage = EXTRA_ROW_CONFIG.extra_usage;
-        delete EXTRA_ROW_CONFIG.extra_usage;
         EXTRA_ROW_CONFIG[key] = { label: `${displayName} (7d)`, color: 'scoped' };
-        EXTRA_ROW_CONFIG.extra_usage = extraUsage;
     }
     return data;
 }
@@ -903,6 +1101,7 @@ function updateUI(data) {
 
     // Update compact bars in parallel if compact mode is active
     if (isCompactMode) updateCompactBars(data);
+    if (isBarMode) updateBarUsage(data);
 
     // On first load, seed alert flags so we don't fire for thresholds
     // the user can already see when the app starts
@@ -1035,6 +1234,10 @@ function applyCompactMode(compact) {
         loadChart();
     }
 
+    // Both views carry stats, so switching modes only needs an immediate
+    // repaint of the view being switched to; the poll keeps running either way.
+    refreshSystemStats();
+
     // Show/hide the collapse chevron (only visible in normal mode with data)
     if (elements.compactCollapseBtn) {
         elements.compactCollapseBtn.style.display = compact ? 'none' : 'flex';
@@ -1094,27 +1297,8 @@ function updateCompactBars(data) {
     } else {
         elements.compactFableRow.style.display = 'none';
     }
-
-    // Spend — only populated while the row is toggled open (collapsed compact
-    // mode doesn't poll the spend endpoints, so data.extra_usage may be
-    // stale or absent until the row is opened and a fetch completes)
-    if (compactSpendOpen && data.extra_usage && data.extra_usage.utilization !== undefined) {
-        const spendPct = Math.min(Math.max(data.extra_usage.utilization || 0, 0), 100);
-        elements.compactSpendFill.style.width = `${spendPct}%`;
-        elements.compactSpendPct.textContent = `${Math.round(spendPct)}%`;
-        elements.compactSpendFill.className = 'compact-bar-fill spend';
-        if (spendPct >= dangerThreshold) elements.compactSpendFill.classList.add('danger');
-        else if (spendPct >= warnThreshold) elements.compactSpendFill.classList.add('warning');
-    }
 }
 
-// Sync the compact spend chevron + row visibility from compactSpendOpen state
-function applyCompactSpendRow() {
-    if (!elements.compactSpendToggle) return;
-    elements.compactSpendArrow.classList.toggle('expanded', compactSpendOpen);
-    elements.compactSpendToggle.title = compactSpendOpen ? 'Hide spend' : 'Show spend';
-    elements.compactSpendRow.style.display = compactSpendOpen ? '' : 'none';
-}
 // Persist compact mode setting without touching the rest of settings — debounced
 let _saveCompactTimer = null;
 async function _saveCompactSetting(compact) {
@@ -1208,7 +1392,6 @@ function refreshTimers() {
             // Wait a few seconds for the server to update, then refresh
             setTimeout(() => {
                 fetchUsageData();
-                checkForUpdate();
             }, 3000);
         } else if (sessionDiff > 0) {
             sessionResetTriggered = false; // Reset flag when timer is active again
@@ -1849,39 +2032,6 @@ function applyTheme(theme) {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const useDark = theme === 'dark' || (theme === 'system' && prefersDark);
     document.body.classList.toggle('theme-light', !useDark);
-}
-
-// Update check
-async function checkForUpdate() {
-    try {
-        const result = await window.electronAPI.checkForUpdate();
-        if (!result.hasUpdate) return;
-
-        const version = result.version;
-
-        // Show banner and resize to compensate. resizeWidget() is normal-mode
-        // only (it hardcodes WIDGET_WIDTH via the resize-window IPC channel),
-        // so in compact mode re-assert compact bounds instead — main.js's
-        // getCompactHeight() already accounts for the banner via
-        // updateBannerVisible, set in the same check-for-update call above.
-        elements.updateBannerText.textContent = `▲  Version ${version} available — click to download`;
-        elements.updateBanner.style.display = 'flex';
-        if (isCompactMode) {
-            window.electronAPI.setCompactMode(true);
-        } else {
-            resizeWidget(true);
-        }
-
-        // Populate settings panel link if already visible
-        if (elements.settingsUpdateLink) {
-            elements.settingsUpdateLink.textContent = `→ v${version} available`;
-            elements.settingsUpdateLink.style.display = 'inline';
-        }
-
-        debugLog(`Update available: v${version}`);
-    } catch (e) {
-        debugLog('Update check failed silently', e);
-    }
 }
 
 // Start the application

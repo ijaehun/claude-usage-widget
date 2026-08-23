@@ -40,17 +40,19 @@
                             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                         </svg>
                     </button>
+                    <button class="control-btn dock-btn" id="dockBtn" title="Dock to screen edge">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="16" width="18" height="5" rx="1" fill="currentColor" stroke="none" />
+                            <path d="M12 3v9" />
+                            <polyline points="8 8 12 12 16 8" />
+                        </svg>
+                    </button>
                     <button class="control-btn minimize-btn" id="minimizeBtn" title="Minimise to System Tray">−</button>
                     <button class="control-btn close-btn" id="closeBtn" title="Exit Application">×</button>
                 </div>
             </div>
 
             <!-- Update Banner (hidden by default) -->
-            <div class="update-banner" id="updateBanner" style="display: none;">
-                <span class="update-banner-text" id="updateBannerText"></span>
-                <button class="update-banner-dismiss" id="updateBannerDismiss" title="Dismiss">✕</button>
-            </div>
-
             <!-- Loading State -->
             <div class="loading-container" id="loadingContainer">
                 <div class="spinner"></div>
@@ -182,6 +184,42 @@
                     <div id="extraRows"></div>
                 </div>
 
+                <!-- System Monitor (local machine CPU / GPU / RAM) -->
+                <div class="sysmon-section" id="sysmonSection">
+                    <div class="sysmon-row">
+                        <span class="sysmon-label" id="cpuLabel" title="CPU">CPU</span>
+                        <div class="sysmon-bar">
+                            <div class="sysmon-fill cpu" id="cpuFill" style="width: 0%"></div>
+                        </div>
+                        <span class="sysmon-pct" id="cpuPct">--</span>
+                        <span class="sysmon-detail" id="cpuDetail">--</span>
+                    </div>
+                    <div class="sysmon-row">
+                        <span class="sysmon-label" id="gpuLabel" title="GPU">GPU</span>
+                        <div class="sysmon-bar">
+                            <div class="sysmon-fill gpu" id="gpuFill" style="width: 0%"></div>
+                        </div>
+                        <span class="sysmon-pct" id="gpuPct">--</span>
+                        <span class="sysmon-detail" id="gpuDetail">--</span>
+                    </div>
+                    <div class="sysmon-row">
+                        <span class="sysmon-label" title="VRAM">VRAM</span>
+                        <div class="sysmon-bar">
+                            <div class="sysmon-fill vram" id="vramFill" style="width: 0%"></div>
+                        </div>
+                        <span class="sysmon-pct" id="vramPct">--</span>
+                        <span class="sysmon-detail" id="vramDetail">--</span>
+                    </div>
+                    <div class="sysmon-row">
+                        <span class="sysmon-label" title="System memory">RAM</span>
+                        <div class="sysmon-bar">
+                            <div class="sysmon-fill ram" id="ramFill" style="width: 0%"></div>
+                        </div>
+                        <span class="sysmon-pct" id="ramPct">--</span>
+                        <span class="sysmon-detail" id="ramDetail">--</span>
+                    </div>
+                </div>
+
                 <div class="graph-section" id="graphSection" style="display: none;">
                     <canvas id="usageChart"></canvas>
                 </div>
@@ -223,22 +261,73 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Spend toggle — collapsed by default; opening it triggers a fetch
-                         (spend data isn't polled while collapsed, see main.js) -->
-                    <div class="compact-expand-toggle" id="compactSpendToggle" title="Show spend">
-                        <svg class="compact-expand-arrow" id="compactSpendArrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <polyline points="6 9 12 15 18 9" />
+    <!-- Local machine stats — always on in compact mode, since a small
+                         always-visible widget is exactly where these matter most. -->
+                    <div class="compact-sysmon" id="compactSysmon">
+                        <span class="compact-sys-item"><span class="compact-sys-key">CPU</span> <span class="compact-sys-val" id="compactCpuPct">--</span></span>
+                        <span class="compact-sys-item"><span class="compact-sys-key">GPU</span> <span class="compact-sys-val" id="compactGpuPct">--</span></span>
+                        <span class="compact-sys-item"><span class="compact-sys-key">RAM</span> <span class="compact-sys-val" id="compactRamPct">--</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bar Content — docked appbar layout: one horizontal strip
+                 spanning the screen edge. Claude usage on the left, machine
+                 stats on the right. -->
+            <div class="bar-content" id="barContent" style="display: none;">
+                <div class="bar-group bar-group-claude">
+                    <span class="bar-brand">Claude</span>
+                    <button class="bar-icon-btn" id="barRefreshBtn" title="Refresh Claude usage">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M23 4v6h-6M1 20v-6h6" />
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                         </svg>
-                    </div>
-                    <div class="compact-row" id="compactSpendRow" style="display: none;">
-                        <span class="compact-label">Spend</span>
-                        <div class="compact-bar-wrap">
-                            <div class="compact-bar-bg">
-                                <div class="compact-bar-fill spend" id="compactSpendFill" style="width: 0%"></div>
-                                <span class="compact-pct" id="compactSpendPct">0%</span>
-                            </div>
-                        </div>
-                    </div>
+                    </button>
+                    <span class="bar-item">
+                        <span class="bar-key">Session</span>
+                        <span class="bar-meter"><span class="bar-fill" id="barSessionFill" style="width:0%"></span></span>
+                        <span class="bar-val" id="barSessionPct">--</span>
+                    </span>
+                    <span class="bar-item">
+                        <span class="bar-key">Weekly</span>
+                        <span class="bar-meter"><span class="bar-fill weekly" id="barWeeklyFill" style="width:0%"></span></span>
+                        <span class="bar-val" id="barWeeklyPct">--</span>
+                    </span>
+                    <span class="bar-item bar-reset">
+                        <span class="bar-key">Resets</span>
+                        <span class="bar-val" id="barResetsIn">--:--</span>
+                    </span>
+                </div>
+
+                <div class="bar-spacer" id="barDragHandle"></div>
+
+                <div class="bar-group bar-group-system">
+                    <span class="bar-item">
+                        <span class="bar-key">CPU</span>
+                        <span class="bar-meter"><span class="bar-fill cpu" id="barCpuFill" style="width:0%"></span></span>
+                        <span class="bar-val" id="barCpuPct">--</span>
+                    </span>
+                    <span class="bar-item">
+                        <span class="bar-key">GPU</span>
+                        <span class="bar-meter"><span class="bar-fill gpu" id="barGpuFill" style="width:0%"></span></span>
+                        <span class="bar-val" id="barGpuPct">--</span>
+                    </span>
+                    <span class="bar-item">
+                        <span class="bar-key">VRAM</span>
+                        <span class="bar-meter"><span class="bar-fill vram" id="barVramFill" style="width:0%"></span></span>
+                        <span class="bar-val" id="barVramPct">--</span>
+                    </span>
+                    <span class="bar-item">
+                        <span class="bar-key">RAM</span>
+                        <span class="bar-meter"><span class="bar-fill ram" id="barRamFill" style="width:0%"></span></span>
+                        <span class="bar-val" id="barRamPct">--</span>
+                    </span>
+                    <button class="bar-icon-btn" id="barUndockBtn" title="Undock (back to widget)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="4 14 10 14 10 20" />
+                            <polyline points="20 10 14 10 14 4" />
+                        </svg>
+                    </button>
                 </div>
             </div>
 
@@ -280,6 +369,13 @@
                                 <span class="settings-row-label">Always on top</span>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="alwaysOnTopToggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="settings-col" id="barModeCol">
+                                <span class="settings-row-label" id="barModeLabel">Dock to screen edge</span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="barModeToggle">
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
@@ -381,19 +477,7 @@
 
                     <div class="settings-footer">
                         <span class="settings-version-label" id="settingsVersionLabel">v1.5.0</span>
-                        <span class="settings-update-link" id="settingsUpdateLink" style="display: none;"></span>
                         <button class="logout-btn" id="logoutBtn">Log Out</button>
-                        <button class="coffee-btn" id="coffeeBtn">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
-                                <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
-                                <line x1="6" y1="2" x2="6" y2="4" />
-                                <line x1="10" y1="2" x2="10" y2="4" />
-                                <line x1="14" y1="2" x2="14" y2="4" />
-                            </svg>
-                            Buy me a coffee
-                        </button>
                     </div>
                 </div>
             </div>

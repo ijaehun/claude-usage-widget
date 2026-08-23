@@ -3,8 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Allowed domains for openExternal — prevents renderer from opening arbitrary URLs
 const ALLOWED_EXTERNAL_DOMAINS = [
   'claude.ai',
-  'github.com',
-  'paypal.me'
+  'github.com'
 ];
 
 function isAllowedExternalUrl(url) {
@@ -63,12 +62,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
 
-  // Updates
-  checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
+  // Version
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
   // Notifications
   showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
+
+  // System monitor
+  getSystemStats: () => ipcRenderer.invoke('get-system-stats'),
+
+  // Bar mode (Windows appbar docking)
+  setBarMode: (enabled, edge) => ipcRenderer.invoke('set-bar-mode', { enabled, edge }),
+  getBarMode: () => ipcRenderer.invoke('get-bar-mode'),
+  onBarModeChanged: (callback) => {
+    ipcRenderer.on('bar-mode-changed', (_e, enabled) => callback(enabled));
+  },
 
   // Compact mode
   setCompactMode: (compact) => ipcRenderer.send('set-compact-mode', compact)

@@ -1,12 +1,10 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, session, shell, Notification, safeStorage, nativeImage, screen } = require('electron');
 const path = require('path');
-const https = require('https');
 const Store = require('electron-store');
 const { fetchViaWindow, fetchMultipleViaWindow } = require('./src/fetch-via-window');
 const { normalizeUsageLimits } = require('./src/normalize-usage-limits');
-
-const GITHUB_OWNER = 'SlavomirDurej';
-const GITHUB_REPO = 'claude-usage-widget';
+const systemStats = require('./src/system-stats');
+const appbar = require('./src/appbar');
 
 // Required for Windows taskbar features (notifications, Jump List tasks) to register
 // reliably under one stable identity — without this, dev (npm start) and packaged
@@ -15,6 +13,21 @@ const GITHUB_REPO = 'claude-usage-widget';
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.claudeusage.widget');
 }
+
+// --- Resource trimming (local customization) -------------------------------
+// This widget renders a few static progress bars and a small chart. It has no
+// need for a GPU process, an out-of-process audio service, or Chromium's media
+// capture stack, all of which Electron spins up by default. Disabling them
+// removes several processes and a few hundred MB of RSS. Must run before the
+// app 'ready' event, hence its position here.
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-features', [
+  'AudioServiceOutOfProcess',      // fold audio back into the main process
+  'MediaFoundationVideoCapture',   // no camera use anywhere in this app
+  'HardwareMediaKeyHandling',      // no media keys to listen for
+].join(','));
+app.commandLine.appendSwitch('disable-gpu-compositing');
+// ---------------------------------------------------------------------------
 
 
 // Profile isolation: --profile=<name> launches a fully separate instance with its own
@@ -98,24 +111,21 @@ const WIDGET_WIDTH = process.platform === 'darwin' ? 590 : 560;
 const WIDGET_HEIGHT = 155;
 const COMPACT_WIDTH = 290;
 const COMPACT_HEIGHT = 105;
-const COMPACT_ROW_HEIGHT = 28; // extra height per optional row (Fable, Spend)
-const COMPACT_CHEVRON_HEIGHT = 15; // the always-visible spend toggle chevron
-const COMPACT_BANNER_HEIGHT = 28; // matches BANNER_HEIGHT in the renderer's resizeWidget()
+const COMPACT_ROW_HEIGHT = 28; // extra height per optional row (Fable)
+const COMPACT_SYSMON_HEIGHT = 22; // the always-on CPU/GPU/RAM strip
+// Docked bar mode: a full-width strip along a screen edge, registered as a
+// Windows appbar so maximized windows stop at it instead of covering it.
+const BAR_HEIGHT = 34;
 const HISTORY_RETENTION_DAYS = 8;
 
-// Compact mode always shows Session + Weekly plus the spend chevron; grows by
-// one row when the account has a scoped Fable weekly limit
-// (data.seven_day_fable, populated by normalize-usage-limits.js), by another
-// when the user has toggled the spend row open (settings.compactSpendOpen),
-// and by the banner height when an update is available (updateBannerVisible,
-// set by the check-for-update handler below — compact mode has no separate
-// update-check path of its own, it shares this one).
+// Compact mode always shows Session + Weekly plus the system-monitor strip,
+// and grows by one row when the account has a scoped Fable weekly limit
+// (data.seven_day_fable, populated by normalize-usage-limits.js). COMPACT_ROW_HEIGHT
+// is the per-optional-row growth.
 function getCompactHeight() {
   const data = store.get('latestUsageData');
-  let height = COMPACT_HEIGHT + COMPACT_CHEVRON_HEIGHT;
+  let height = COMPACT_HEIGHT + COMPACT_SYSMON_HEIGHT;
   if (data?.seven_day_fable) height += COMPACT_ROW_HEIGHT;
-  if (store.get('settings.compactSpendOpen', false)) height += COMPACT_ROW_HEIGHT;
-  if (store.get('updateBannerVisible', false)) height += COMPACT_BANNER_HEIGHT;
   return height;
 }
 const CHART_DAYS = 7;
@@ -265,7 +275,7 @@ function showMainWindowSmart() {
     return;
   }
   const bounds = mainWindow.getBounds();
-  if (!isPositionOnScreen(bounds.x, bounds.y, bounds.width, bounds.height)) {
+  if (!appbar.isDocked() && !isPositionOnScreen(bounds.x, bounds.y, bounds.width, bounds.height)) {
     const { x, y } = getCenteredPosition(bounds.width, bounds.height);
     debugLog('[Window] Recentering off-screen window from', bounds, 'to', { x, y });
     mainWindow.setPosition(x, y);
@@ -308,6 +318,10 @@ function createMainWindow() {
 
   let positionSaveTimer = null;
   mainWindow.on('move', () => {
+    // A docked bar's position belongs to the shell, not the user. Recording it
+    // would overwrite the widget's own remembered position with the screen
+    // edge, so the widget would come back from docking stuck at the bottom.
+    if (appbar.isDocked()) return;
     if (positionSaveTimer) clearTimeout(positionSaveTimer);
     positionSaveTimer = setTimeout(() => {
       const position = mainWindow.getBounds();
@@ -728,6 +742,18 @@ function createTray() {
           }
         }
       },
+      {
+        label: 'Dock to screen edge',
+        type: 'checkbox',
+        checked: appbar.isDocked(),
+        enabled: appbar.isSupported(),
+        click: (item) => {
+          const achieved = applyBarMode(item.checked);
+          // Reflect what actually happened rather than what was clicked; the
+          // shell can refuse the registration.
+          item.checked = achieved;
+        }
+      },
       { type: 'separator' },
       {
         label: 'Log Out',
@@ -1064,6 +1090,9 @@ ipcMain.on('close-window', () => {
 });
 
 ipcMain.on('resize-window', (event, height) => {
+  // A docked appbar owns its bounds; honouring a renderer resize here would
+  // pull the window off the strip the shell reserved for it.
+  if (appbar.isDocked()) return;
   if (mainWindow) {
     mainWindow.setContentSize(WIDGET_WIDTH, height);
   }
@@ -1077,6 +1106,7 @@ ipcMain.handle('get-window-position', () => {
 });
 
 ipcMain.handle('set-window-position', (event, { x, y }) => {
+  if (appbar.isDocked()) return false;
   if (mainWindow) {
     mainWindow.setPosition(x, y);
     return true;
@@ -1086,7 +1116,7 @@ ipcMain.handle('set-window-position', (event, { x, y }) => {
 
 ipcMain.on('open-external', (event, url) => {
   // Trust boundary enforcement: duplicate allowlist check in main process
-  const allowedDomains = ['claude.ai', 'github.com', 'paypal.me'];
+  const allowedDomains = ['claude.ai', 'github.com'];
   try {
     const parsedUrl = new URL(url);
     const isAllowed = allowedDomains.some(domain => 
@@ -1101,6 +1131,10 @@ ipcMain.on('open-external', (event, url) => {
     console.warn(`[Security] Blocked openExternal call with invalid URL: ${url}`);
   }
 });
+
+// Local machine CPU / RAM / GPU for the system monitor row. Read-only and
+// cheap; the renderer polls this on its own interval while the row is visible.
+ipcMain.handle('get-system-stats', () => systemStats.getStats());
 
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
@@ -1124,9 +1158,74 @@ ipcMain.on('show-notification', (event, { title, body }) => {
   }
 });
 
+// Bar mode: dock the widget to a screen edge as a Windows appbar. Returns the
+// state actually achieved, which may be false if the platform or the shell
+// refused — callers must not assume the request succeeded.
+function applyBarMode(enabled, edge) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const targetEdge = edge || store.get('settings.barEdge', 'bottom');
+
+  if (!enabled) {
+    if (appbar.isDocked()) appbar.undock();
+    store.set('settings.barMode', false);
+
+    // Restore the geometry the widget had before docking. Reusing the bar's own
+    // x/y would drop the widget at the screen edge, where a 260px-tall window
+    // extends past the bottom of the display and looks like it vanished.
+    const saved = store.get('preDockBounds');
+    const compact = store.get('settings.compactMode', false);
+    const width = compact ? COMPACT_WIDTH : WIDGET_WIDTH;
+    const height = compact ? getCompactHeight() : WIDGET_HEIGHT;
+    let x;
+    let y;
+    if (saved && isPositionOnScreen(saved.x, saved.y, saved.width, saved.height)) {
+      x = saved.x;
+      y = saved.y;
+    } else {
+      ({ x, y } = getCenteredPosition(width, height));
+    }
+    mainWindow.setBounds({ x, y, width, height });
+    store.delete('preDockBounds');
+
+    // The renderer owns the real height (the layout grew when the system
+    // monitor became permanent), so it re-runs its own sizing pass once it
+    // knows bar mode is off. WIDGET_HEIGHT above is only a floor.
+    mainWindow.webContents.send('bar-mode-changed', false);
+    return false;
+  }
+
+  if (!appbar.isSupported()) {
+    debugLog('[BarMode] appbar unsupported on this platform');
+    return false;
+  }
+
+  // Remember where to come back to before the appbar takes over the bounds.
+  if (!appbar.isDocked()) {
+    store.set('preDockBounds', mainWindow.getBounds());
+  }
+
+  const ok = appbar.dock(mainWindow, targetEdge, BAR_HEIGHT);
+  debugLog('[BarMode] dock=' + ok + ' bounds=' + JSON.stringify(mainWindow.getBounds()));
+  if (!ok) store.delete('preDockBounds');
+  store.set('settings.barMode', ok);
+  store.set('settings.barEdge', targetEdge);
+  mainWindow.webContents.send('bar-mode-changed', ok);
+  return ok;
+}
+
+ipcMain.handle('set-bar-mode', (event, { enabled, edge } = {}) => applyBarMode(enabled, edge));
+ipcMain.handle('get-bar-mode', () => ({
+  enabled: appbar.isDocked(),
+  edge: store.get('settings.barEdge', 'bottom'),
+  supported: appbar.isSupported(),
+}));
+
 // Resize window for compact vs normal mode
 // Compact: 290px wide, normal: 530px wide. Height stays managed by renderer.
 ipcMain.on('set-compact-mode', (event, compact) => {
+  // Same reasoning as resize-window: compact/normal geometry does not apply
+  // while the window is a docked bar.
+  if (appbar.isDocked()) return;
   if (mainWindow) {
     const bounds = mainWindow.getBounds();
     const width = compact ? COMPACT_WIDTH : WIDGET_WIDTH;
@@ -1151,7 +1250,6 @@ ipcMain.handle('get-settings', () => {
     refreshInterval: store.get('settings.refreshInterval', '300'),
     graphVisible: store.get('settings.graphVisible', false),
     expandedOpen: store.get('settings.expandedOpen', false),
-    compactSpendOpen: store.get('settings.compactSpendOpen', false),
     showTrayStats: store.get('settings.showTrayStats', false)
   };
 });
@@ -1175,9 +1273,6 @@ ipcMain.handle('save-settings', (event, settings) => {
   store.set('settings.expandedOpen', settings.expandedOpen);
   // Guarded: settings objects cached by the renderer before this field
   // existed would otherwise overwrite the stored value with undefined.
-  if (settings.compactSpendOpen !== undefined) {
-    store.set('settings.compactSpendOpen', settings.compactSpendOpen);
-  }
   store.set('settings.showTrayStats', settings.showTrayStats);
 
   const isPortable = process.platform === 'win32' && !!process.env.PORTABLE_EXECUTABLE_FILE;
@@ -1320,134 +1415,6 @@ ipcMain.handle('detect-session-key', async () => {
   });
 });
 
-// Fetches and JSON-parses a GitHub API path. Resolves null on any failure
-// (network error, timeout, non-JSON body) rather than rejecting, so callers
-// can treat "couldn't check" the same as "nothing new" without a try/catch.
-function fetchGithubJson(path) {
-  return new Promise((resolve) => {
-    const options = {
-      hostname: 'api.github.com',
-      path,
-      method: 'GET',
-      headers: {
-        'User-Agent': 'claude-usage-widget',
-        'Accept': 'application/vnd.github+json'
-      },
-      timeout: 5000
-    };
-    const req = https.request(options, (res) => {
-      let body = '';
-      res.on('data', (chunk) => { body += chunk; });
-      res.on('end', () => {
-        try { resolve(JSON.parse(body)); } catch { resolve(null); }
-      });
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
-    req.end();
-  });
-}
-
-// Check GitHub releases for a newer version. Runs the stable-release check
-// for everyone; if the local build is itself a pre-release and no stable
-// update supersedes it, also checks for a newer pre-release specifically —
-// GitHub's /releases/latest endpoint never returns pre-releases, so that
-// requires a second call to the plural /releases endpoint, which returns
-// every release (stable and pre-release) with a "prerelease" boolean.
-ipcMain.handle('check-for-update', async () => {
-  const current = app.getVersion();
-
-  const latest = await fetchGithubJson(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`);
-  const latestTag = (latest?.tag_name || '').replace(/^v/, '');
-  if (latestTag && isNewerVersion(latestTag, current)) {
-    store.set('updateBannerVisible', true);
-    return { hasUpdate: true, version: latestTag };
-  }
-
-  // 'dev' is the constant placeholder version checked into develop itself —
-  // not a numbered pre-release track like rc/beta. A dev-branch runner is
-  // always at least as new as whatever RC was last cut from develop, so
-  // "there's a newer pre-release" would be backwards information for them.
-  const localVersion = parseVersion(current);
-  if (localVersion.preRelease !== null && localVersion.preReleaseLabel !== 'dev') {
-    const all = await fetchGithubJson(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`);
-    const newestPreRelease = Array.isArray(all) ? all.find((r) => r.prerelease) : null;
-    const preTag = (newestPreRelease?.tag_name || '').replace(/^v/, '');
-    if (preTag && isNewerPreRelease(preTag, current)) {
-      store.set('updateBannerVisible', true);
-      return { hasUpdate: true, version: preTag };
-    }
-  }
-
-  store.set('updateBannerVisible', false);
-  return { hasUpdate: false, version: null };
-});
-
-// Parses "1.7.6-rc.10" into comparable parts. preReleaseNum is parsed as an
-// integer specifically so "rc.10" sorts after "rc.9" — comparing the raw
-// preRelease string ("rc.10" vs "rc.9") breaks past single digits.
-function parseVersion(ver) {
-  const [mainVer, preRelease] = ver.split('-');
-  const parts = mainVer.split('.').map(Number);
-  let preReleaseLabel = null;
-  let preReleaseNum = 0;
-  if (preRelease) {
-    const match = preRelease.match(/^([a-zA-Z]+)\.?(\d+)?$/);
-    if (match) {
-      preReleaseLabel = match[1];
-      preReleaseNum = match[2] ? parseInt(match[2], 10) : 0;
-    } else {
-      preReleaseLabel = preRelease; // unrecognized suffix format — fall back to raw string
-    }
-  }
-  return {
-    major: parts[0] || 0,
-    minor: parts[1] || 0,
-    patch: parts[2] || 0,
-    preRelease: preRelease || null,
-    preReleaseLabel,
-    preReleaseNum
-  };
-}
-
-// Returns 1 if a > b, -1 if a < b, 0 if equal. A stable version (no
-// preRelease) outranks any pre-release of the same major.minor.patch.
-function compareVersions(a, b) {
-  if (a.major !== b.major) return a.major > b.major ? 1 : -1;
-  if (a.minor !== b.minor) return a.minor > b.minor ? 1 : -1;
-  if (a.patch !== b.patch) return a.patch > b.patch ? 1 : -1;
-  if (a.preRelease === null && b.preRelease === null) return 0;
-  if (a.preRelease === null) return 1;
-  if (b.preRelease === null) return -1;
-  if (a.preReleaseLabel !== b.preReleaseLabel) {
-    return a.preReleaseLabel > b.preReleaseLabel ? 1 : -1; // e.g. rc vs beta — not currently used, but won't crash
-  }
-  return a.preReleaseNum > b.preReleaseNum ? 1 : (a.preReleaseNum < b.preReleaseNum ? -1 : 0);
-}
-
-// Used for the stable-release check that runs for every user. Never
-// surfaces a pre-release as an update, regardless of what the local build is.
-function isNewerVersion(remote, local) {
-  try {
-    const r = parseVersion(remote);
-    if (r.preRelease !== null) return false;
-    return compareVersions(r, parseVersion(local)) > 0;
-  } catch { return false; }
-}
-
-// Only meaningful when the local build is itself a pre-release. Compares
-// remote against local including the pre-release number, so an rc.2 user is
-// correctly notified about rc.3 (numeric comparison, not string comparison —
-// see parseVersion). Also correctly surfaces a newer pre-release for a later
-// major/minor/patch, not just a higher rc number on the same base version.
-function isNewerPreRelease(remote, local) {
-  try {
-    const l = parseVersion(local);
-    if (l.preRelease === null) return false;
-    return compareVersions(parseVersion(remote), l) > 0;
-  } catch { return false; }
-}
-
 ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   // Use the same credential retrieval logic as get-credentials
   let sessionKey = null;
@@ -1473,57 +1440,21 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   // Ensure cookie is set
   await setSessionCookie(sessionKey);
 
-  // Conditional API polling: Only fetch overage/prepaid if the expand panel is open
-  // or if compact mode is disabled (normal mode). This reduces API calls when the
-  // user won't see the extra usage data anyway.
-  // If forceExtended is passed (e.g., when user clicks expand), use that instead of saved setting
-  const expandedOpen = options.forceExtended !== undefined ? options.forceExtended : store.get('settings.expandedOpen', false);
-  const compactMode = store.get('settings.compactMode', false);
-  // Compact mode forces the main expanded panel closed, so spend/credit
-  // endpoints are additionally polled while the compact spend row is toggled
-  // open. Collapsed compact mode does not poll the extended endpoints at all.
-  const compactSpendOpen = compactMode && store.get('settings.compactSpendOpen', false);
-  const shouldFetchExtended = expandedOpen || compactSpendOpen;
-
+  // This build drops the extra-usage (overage) and prepaid-credits features, so
+  // only the usage endpoint is ever fetched. The overage/prepaid results are
+  // still declared as permanently 'skipped' because the merge steps below read
+  // their status.
   const usageUrl = `https://claude.ai/api/organizations/${organizationId}/usage`;
-  const overageUrl = `https://claude.ai/api/organizations/${organizationId}/overage_spend_limit`;
-  const prepaidUrl = `https://claude.ai/api/organizations/${organizationId}/prepaid/credits`;
 
-  // Build URL array based on UI state
-  const urls = [usageUrl];
-  if (shouldFetchExtended) {
-    urls.push(overageUrl, prepaidUrl);
-    debugLog('[Conditional Polling] Fetching extended data (overage + prepaid) - panel is visible');
-  } else {
-    debugLog('[Conditional Polling] Skipping extended data - panel not visible');
-  }
+  let usageResult;
+  const overageResult = { status: 'skipped', reason: 'extra usage removed in this build' };
+  const prepaidResult = { status: 'skipped', reason: 'prepaid credits removed in this build' };
 
-  // Fetch endpoints sequentially using a single reused BrowserWindow.
-  // This reduces memory overhead compared to creating 3 separate windows.
-  // Usage is always required; overage and prepaid are conditional based on UI state.
-  let usageResult, overageResult, prepaidResult;
-  
   try {
-    const results = await fetchMultipleViaWindow(urls);
-    
-    // Always have usage result (first in array)
+    const results = await fetchMultipleViaWindow([usageUrl]);
     usageResult = { status: 'fulfilled', value: results[0] };
-    
-    // Conditionally map overage/prepaid results
-    if (shouldFetchExtended) {
-      overageResult = { status: 'fulfilled', value: results[1] };
-      prepaidResult = { status: 'fulfilled', value: results[2] };
-    } else {
-      // Mark as skipped (not an error, just not fetched)
-      overageResult = { status: 'skipped', reason: 'UI panel not visible' };
-      prepaidResult = { status: 'skipped', reason: 'UI panel not visible' };
-    }
   } catch (error) {
-    // If any fetch fails, determine which one and set appropriate result statuses
-    // For now, if the batch fails, treat usage as failed (required endpoint)
     usageResult = { status: 'rejected', reason: error };
-    overageResult = { status: 'rejected', reason: error };
-    prepaidResult = { status: 'rejected', reason: error };
   }
 
   // Usage endpoint is mandatory
@@ -1623,8 +1554,11 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   // Update tray icon with current usage data
   updateTrayIcon(data);
 
-  // Keep the compact window sized correctly if the Fable row just appeared/disappeared
-  if (mainWindow && !mainWindow.isDestroyed() && store.get('settings.compactMode', false)) {
+  // Keep the compact window sized correctly if the Fable row just appeared/disappeared.
+  // Skipped while docked: the bar's geometry belongs to the appbar reservation,
+  // and applying compact bounds here shrinks it to the widget footprint.
+  if (mainWindow && !mainWindow.isDestroyed() && !appbar.isDocked()
+      && store.get('settings.compactMode', false)) {
     const bounds = mainWindow.getBounds();
     mainWindow.setBounds({ x: bounds.x, y: bounds.y, width: COMPACT_WIDTH, height: getCompactHeight() });
   }
@@ -1663,10 +1597,19 @@ app.whenReady().then(async () => {
     await setSessionCookie(sessionKey);
   }
 
+  systemStats.start();
+
   migrateUsageHistoryKey();
   pruneStaleHistoryKeys();
 
   createMainWindow();
+
+  // Restore bar mode once the renderer is live, so it can switch to the bar
+  // layout in the same frame the window is resized to the docked strip.
+  if (store.get('settings.barMode', false)) {
+    mainWindow.webContents.once('did-finish-load', () => applyBarMode(true));
+  }
+
   // Avoid creating temporary tray icons during startup when tray stats are disabled.
   if (store.get('settings.showTrayStats', false)) {
     createTray();
@@ -1721,6 +1664,28 @@ app.on('window-all-closed', () => {
 // quit apart from a click on the close button to just minimize.
 app.on('before-quit', () => {
   isQuitting = true;
+  systemStats.stop();
+  // Release the reserved edge before the process goes away, otherwise the
+  // shell keeps the strip carved out of the work area.
+  appbar.undock();
+});
+
+// Belt-and-braces cleanup for the appbar reservation. before-quit covers the
+// ordinary paths, but a reservation that outlives the process leaves a dead
+// strip of desktop that nothing can use, so every remaining exit hook releases
+// it too. undock() is idempotent.
+//
+// A hard kill (Task Manager, SIGKILL) runs none of these — that is inherent to
+// the appbar API. Recovery in that case is to relaunch and toggle docking off,
+// or to let the shell recompute the work area.
+app.on('will-quit', () => appbar.undock());
+app.on('window-all-closed', () => appbar.undock());
+process.on('exit', () => appbar.undock());
+process.on('SIGINT', () => { appbar.undock(); app.quit(); });
+process.on('SIGTERM', () => { appbar.undock(); app.quit(); });
+process.on('uncaughtException', (err) => {
+  console.error('[Fatal]', err);
+  appbar.undock();
 });
 
 app.on('activate', () => {

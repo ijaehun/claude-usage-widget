@@ -614,6 +614,7 @@ body.theme-light .graph-btn.active {
     color: #e0e0e0;
     font-size: 13px;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
     text-align: right;
 }
 
@@ -1701,4 +1702,316 @@ body.theme-light .compact-pct {
 
 .progress-fill.pulse {
     animation: pulse-danger 1.2s ease-in-out infinite;
+}
+
+/* ===========================================================================
+   System Monitor (local machine CPU / GPU / VRAM / RAM)
+   Mirrors the usage-section grid so the rows line up with the Claude usage
+   rows above them, but at a tighter row height since there are four of them.
+   =========================================================================== */
+
+.sysmon-section {
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    margin-top: 10px;
+    padding: 10px 16px 8px 12px;
+}
+
+.sysmon-row {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) 42px 92px;
+    align-items: center;
+    gap: 8px;
+    height: 22px;
+}
+
+.sysmon-label {
+    color: #a0a0a0;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.sysmon-bar {
+    height: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 60px;
+}
+
+.sysmon-fill {
+    height: 100%;
+    border-radius: 3px;
+    /* Matches the cadence of the 2s poll so the bar glides between samples
+       instead of stepping. */
+    transition: width 0.45s ease;
+}
+
+.sysmon-fill.cpu  { background: linear-gradient(90deg, #38bdf8 0%, #7dd3fc 100%); }
+.sysmon-fill.gpu  { background: linear-gradient(90deg, #34d399 0%, #6ee7b7 100%); }
+.sysmon-fill.vram { background: linear-gradient(90deg, #fbbf24 0%, #fcd34d 100%); }
+.sysmon-fill.ram  { background: linear-gradient(90deg, #f472b6 0%, #f9a8d4 100%); }
+
+/* A row pushed into the red keeps its hue identity but shifts warm, so a
+   glance still tells you which resource is the one under pressure. */
+.sysmon-fill.hot {
+    background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
+}
+
+.sysmon-pct {
+    color: #e5e5e5;
+    font-size: 10px;
+    font-weight: 600;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.sysmon-detail {
+    color: #808080;
+    font-size: 9.5px;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.sysmon-row.unavailable .sysmon-pct,
+.sysmon-row.unavailable .sysmon-detail {
+    color: #666;
+}
+
+/* Light theme */
+body.theme-light .sysmon-section {
+    border-top-color: rgba(0, 0, 0, 0.07);
+}
+
+body.theme-light .sysmon-label {
+    color: #6b6b6b;
+}
+
+body.theme-light .sysmon-bar {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .sysmon-pct {
+    color: #2a2a2a;
+}
+
+body.theme-light .sysmon-detail {
+    color: #8a8a8a;
+}
+
+body.theme-light .sysmon-row.unavailable .sysmon-pct,
+body.theme-light .sysmon-row.unavailable .sysmon-detail {
+    color: #b0b0b0;
+}
+
+
+/* Compact-mode system strip — one line of numbers, no bars. At 290px wide
+   there is no room for meters, and the number alone answers the only question
+   a glance asks: is anything pegged right now? */
+.compact-sysmon {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 22px;
+    padding: 0 10px;
+    margin-top: 2px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.compact-sys-item {
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.compact-sys-key {
+    color: #808080;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.compact-sys-val {
+    color: #e5e5e5;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Only the number goes red, so the row stays quiet until something is
+   actually under pressure. */
+.compact-sys-val.hot {
+    color: #f87171;
+}
+
+.compact-sys-val.unavailable {
+    color: #666;
+}
+
+body.theme-light .compact-sysmon {
+    border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .compact-sys-key {
+    color: #8a8a8a;
+}
+
+body.theme-light .compact-sys-val {
+    color: #2a2a2a;
+}
+
+body.theme-light .compact-sys-val.hot {
+    color: #dc2626;
+}
+
+body.theme-light .compact-sys-val.unavailable {
+    color: #b0b0b0;
+}
+
+/* ===========================================================================
+   Bar mode — the docked appbar strip. The window here is the full width of a
+   screen edge and only BAR_HEIGHT tall, so this layout is a single row: no
+   wrapping, no scrolling, everything on one line.
+   =========================================================================== */
+
+body.bar-mode,
+body.bar-mode .widget-container {
+    /* The docked strip is opaque and square — a floating widget's rounded
+       corners and shadow read as a rendering glitch against a screen edge. */
+    border-radius: 0;
+    box-shadow: none;
+    height: 100%;
+    background: #17171a;
+}
+
+body.bar-mode .title-bar,
+body.bar-mode .content,
+body.bar-mode .compact-content {
+    display: none !important;
+}
+
+.bar-content {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 12px;
+    gap: 10px;
+    font-size: 11px;
+    overflow: hidden;
+}
+
+.bar-group {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    white-space: nowrap;
+}
+
+/* The middle is just empty space. It is deliberately NOT a drag region: a
+   docked bar's position is owned by the appbar reservation, so dragging it
+   only starts a fight between the window manager and the re-assert logic. */
+.bar-spacer {
+    flex: 1 1 auto;
+    height: 100%;
+}
+
+.bar-brand {
+    color: #a78bfa;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    margin-right: 2px;
+}
+
+.bar-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.bar-key {
+    color: #808080;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.bar-meter {
+    display: inline-block;
+    width: 54px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #8b5cf6 0%, #a78bfa 100%);
+    transition: width 0.45s ease;
+}
+
+.bar-fill.weekly { background: linear-gradient(90deg, #6366f1 0%, #818cf8 100%); }
+.bar-fill.cpu    { background: linear-gradient(90deg, #38bdf8 0%, #7dd3fc 100%); }
+.bar-fill.gpu    { background: linear-gradient(90deg, #34d399 0%, #6ee7b7 100%); }
+.bar-fill.vram   { background: linear-gradient(90deg, #fbbf24 0%, #fcd34d 100%); }
+.bar-fill.ram    { background: linear-gradient(90deg, #f472b6 0%, #f9a8d4 100%); }
+.bar-fill.hot    { background: linear-gradient(90deg, #ef4444 0%, #f87171 100%); }
+
+.bar-val {
+    color: #e5e5e5;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    min-width: 30px;
+    text-align: right;
+}
+
+.bar-val.hot { color: #f87171; }
+.bar-val.unavailable { color: #666; }
+
+.bar-reset .bar-val {
+    min-width: 44px;
+}
+
+.bar-icon-btn {
+    background: none;
+    border: none;
+    color: #808080;
+    cursor: pointer;
+    padding: 4px;
+    margin-left: 4px;
+    display: flex;
+    align-items: center;
+    -webkit-app-region: no-drag;
+}
+
+.bar-icon-btn:hover {
+    color: #e5e5e5;
+}
+
+/* Bar mode is a dark chrome element by design — it sits against the desktop
+   edge next to the taskbar, not inside the widget's own themed surface — so
+   the light theme only lightens it enough to stay legible on light setups. */
+body.theme-light.bar-mode,
+body.theme-light.bar-mode .widget-container {
+    background: #f2f2f4;
+}
+
+body.theme-light .bar-key { color: #6b6b6b; }
+body.theme-light .bar-val { color: #2a2a2a; }
+body.theme-light .bar-meter { background: rgba(0, 0, 0, 0.1); }
+body.theme-light .bar-brand { color: #7c3aed; }
+body.theme-light .bar-val.hot { color: #dc2626; }
+body.theme-light .bar-val.unavailable { color: #b0b0b0; }
+body.theme-light .bar-icon-btn { color: #8a8a8a; }
+body.theme-light .bar-icon-btn:hover { color: #2a2a2a; }
+
+/* Reuse the title-bar refresh spin for the bar's own refresh control. */
+.bar-icon-btn.spinning svg {
+    animation: bar-spin 0.8s linear infinite;
+}
+
+@keyframes bar-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
 }
