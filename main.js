@@ -4,6 +4,9 @@ const Store = require('electron-store');
 const { fetchViaWindow, fetchMultipleViaWindow } = require('./src/fetch-via-window');
 const { normalizeUsageLimits } = require('./src/normalize-usage-limits');
 const systemStats = require('./src/system-stats');
+const serviceStatus = require('./src/service-status');
+const statusPanel = require('./src/status-panel');
+const { fadeWindow } = require('./src/window-fade');
 const appbar = require('./src/appbar');
 
 // Required for Windows taskbar features (notifications, Jump List tasks) to register
@@ -116,6 +119,15 @@ const COMPACT_SYSMON_HEIGHT = 22; // the always-on CPU/GPU/RAM strip
 // Docked bar mode: a full-width strip along a screen edge, registered as a
 // Windows appbar so maximized windows stop at it instead of covering it.
 const BAR_HEIGHT = 34;
+
+// Widget fade durations. Slightly longer than the status panel's: the panel is
+// a transient the user opens many times a session, this is the window itself.
+const WIDGET_FADE_IN_MS = 140;
+const WIDGET_FADE_OUT_MS = 180;
+// Backstop for the startup fade. The window is created at opacity 0, and with
+// no tray icon an invisible widget is an unrecoverable app — so full opacity is
+// forced after this regardless of what happened to the animation.
+const FADE_SAFETY_MS = 2500;
 const HISTORY_RETENTION_DAYS = 8;
 
 // Compact mode always shows Session + Weekly plus the system-monitor strip,
@@ -265,9 +277,42 @@ function isMainWindowShownOnScreen() {
 // actually off-screen — a valid custom position is left untouched. This is
 // the single recovery path for the whole app; any future trigger that brings
 // the window forward should route through here too.
+/**
+ * Bring the widget up with a fade. Only fades when it was actually hidden —
+ * fading a window that is already on screen would flash it.
+ */
+function showWithFade() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const wasHidden = !mainWindow.isVisible();
+  if (wasHidden) mainWindow.setOpacity(0);
+  mainWindow.show();
+  mainWindow.focus();
+  if (wasHidden) {
+    fadeWindow(mainWindow, 0, 1, WIDGET_FADE_IN_MS);
+  } else {
+    mainWindow.setOpacity(1);
+  }
+}
+
+/**
+ * Fade out, then hide. Opacity is restored once the window is off screen, so
+ * any path that calls plain show() still gets a visible window — an invisible
+ * widget with no tray icon is unrecoverable.
+ */
+function hideWithFade() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  fadeWindow(mainWindow, mainWindow.getOpacity(), 0, WIDGET_FADE_OUT_MS).then(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.hide();
+    mainWindow.setOpacity(1);
+  });
+}
+
 function showMainWindowSmart() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     createMainWindow();
+    // A freshly created window fades in from its own ready-to-show handler, so
+    // this only has to make sure it is on screen and focused.
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
@@ -282,8 +327,7 @@ function showMainWindowSmart() {
     store.set('windowPosition', { x, y });
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+  showWithFade();
 }
 
 function createMainWindow() {
@@ -300,6 +344,10 @@ function createMainWindow() {
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: false,
+    // Faded in from ready-to-show below. Opacity only — deliberately not
+    // `show: false`, which would put a geometry-sensitive step (the startup
+    // dock) on the far side of a visibility toggle.
+    opacity: 0,
     icon: path.join(__dirname, process.platform === 'darwin' ? 'assets/icon.icns' : process.platform === 'linux' ? 'assets/logo.png' : 'assets/icon.ico'),
     webPreferences: {
       nodeIntegration: false,
@@ -315,6 +363,16 @@ function createMainWindow() {
 
   mainWindow = new BrowserWindow(windowOptions);
   mainWindow.loadFile('src/renderer/index.html');
+
+  mainWindow.once('ready-to-show', () => fadeWindow(mainWindow, 0, 1, WIDGET_FADE_IN_MS));
+  // Deliberately not cleared by the fade. With no tray icon a widget stuck at
+  // opacity 0 is an app with no handle on it at all, so full opacity is forced
+  // regardless of whether ready-to-show ever fired or the ramp completed.
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.getOpacity() < 1) {
+      mainWindow.setOpacity(1);
+    }
+  }, FADE_SAFETY_MS);
 
   let positionSaveTimer = null;
   mainWindow.on('move', () => {
@@ -334,12 +392,34 @@ function createMainWindow() {
   // calls mainWindow.close() and lets this decide). Only hide-to-tray when
   // there's an actual tray icon to bring it back via; otherwise let it
   // close normally so window-all-closed below can quit the process.
+  let closeFadeStarted = false;
   mainWindow.on('close', (event) => {
+    // A popup outliving its parent would keep the app alive with no main
+    // window: 'window-all-closed' never fires while it is up. In practice the
+    // panel dismisses itself on blur long before this, so this is the backstop.
+    statusPanel.close();
+
+    // A quit already in flight is never delayed or animated: preventDefault
+    // here would cancel app.quit() outright.
     if (isQuitting) return;
+
     if (hasTrayIcon()) {
       event.preventDefault();
-      mainWindow.hide();
+      hideWithFade();
+      return;
     }
+
+    if (closeFadeStarted) return;
+    event.preventDefault();
+    closeFadeStarted = true;
+    // Release the reserved edge BEFORE animating, not after. An appbar that
+    // never unregisters leaves a dead strip of desktop, and that must not be
+    // made contingent on an animation running to completion.
+    appbar.undock();
+    fadeWindow(mainWindow, mainWindow.getOpacity(), 0, WIDGET_FADE_OUT_MS).then(() => {
+      // destroy(), not close(): this handler has already had its say.
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+    });
   });
 
   mainWindow.on('closed', () => {
@@ -1072,7 +1152,7 @@ ipcMain.on('minimize-window', () => {
     } else {
       const minimizeToTray = store.get('settings.minimizeToTray', false);
       if (minimizeToTray && hasTrayIcon()) {
-        mainWindow.hide();
+        hideWithFade();
       } else {
         mainWindow.minimize();
       }
@@ -1116,7 +1196,7 @@ ipcMain.handle('set-window-position', (event, { x, y }) => {
 
 ipcMain.on('open-external', (event, url) => {
   // Trust boundary enforcement: duplicate allowlist check in main process
-  const allowedDomains = ['claude.ai', 'github.com'];
+  const allowedDomains = ['claude.ai', 'claude.com', 'github.com'];
   try {
     const parsedUrl = new URL(url);
     const isAllowed = allowedDomains.some(domain => 
@@ -1135,6 +1215,22 @@ ipcMain.on('open-external', (event, url) => {
 // Local machine CPU / RAM / GPU for the system monitor row. Read-only and
 // cheap; the renderer polls this on its own interval while the row is visible.
 ipcMain.handle('get-system-stats', () => systemStats.getStats());
+
+// Claude's own service health, polled from the public status page. Served from
+// a cached snapshot, so this is as cheap as the system-stats read above.
+ipcMain.handle('get-service-status', () => serviceStatus.getStatus());
+
+// The status indicator's click-toggled detail popup. The anchor rect arrives in
+// the widget's own CSS pixels; src/status-panel.js turns that into a screen
+// position. Returns whether the panel ended up open.
+ipcMain.handle('toggle-status-panel', (event, { anchor, theme } = {}) => {
+  if (!anchor || !mainWindow || mainWindow.isDestroyed()) return false;
+  return statusPanel.toggle(mainWindow, anchor, theme);
+});
+
+// Esc, and following the link out. User-facing, so it fades rather than
+// vanishing; the teardown paths below still use the immediate close().
+ipcMain.on('close-status-panel', () => statusPanel.dismiss());
 
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
@@ -1213,7 +1309,13 @@ function applyBarMode(enabled, edge) {
   return ok;
 }
 
-ipcMain.handle('set-bar-mode', (event, { enabled, edge } = {}) => applyBarMode(enabled, edge));
+ipcMain.handle('set-bar-mode', (event, { enabled, edge } = {}) => {
+  // The panel is anchored to an element that is about to move to a different
+  // edge of the screen, so it cannot follow — dismiss it instead of leaving it
+  // floating over nothing.
+  statusPanel.close();
+  return applyBarMode(enabled, edge);
+});
 ipcMain.handle('get-bar-mode', () => ({
   enabled: appbar.isDocked(),
   edge: store.get('settings.barEdge', 'bottom'),
@@ -1223,6 +1325,8 @@ ipcMain.handle('get-bar-mode', () => ({
 // Resize window for compact vs normal mode
 // Compact: 290px wide, normal: 530px wide. Height stays managed by renderer.
 ipcMain.on('set-compact-mode', (event, compact) => {
+  // Same reasoning as the bar-mode handler: the anchor is about to move.
+  statusPanel.close();
   // Same reasoning as resize-window: compact/normal geometry does not apply
   // while the window is a docked bar.
   if (appbar.isDocked()) return;
@@ -1598,6 +1702,7 @@ app.whenReady().then(async () => {
   }
 
   systemStats.start();
+  serviceStatus.start();
 
   migrateUsageHistoryKey();
   pruneStaleHistoryKeys();
@@ -1665,6 +1770,9 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   isQuitting = true;
   systemStats.stop();
+  serviceStatus.stop();
+  // An orphaned popup would keep the process alive past the last real window.
+  statusPanel.close();
   // Release the reserved edge before the process goes away, otherwise the
   // shell keeps the strip carved out of the work area.
   appbar.undock();

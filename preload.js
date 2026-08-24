@@ -3,6 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Allowed domains for openExternal — prevents renderer from opening arbitrary URLs
 const ALLOWED_EXTERNAL_DOMAINS = [
   'claude.ai',
+  // status.claude.com — the service-status indicator links out to it, and it
+  // is a different registrable domain from claude.ai.
+  'claude.com',
   'github.com'
 ];
 
@@ -70,6 +73,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // System monitor
   getSystemStats: () => ipcRenderer.invoke('get-system-stats'),
+
+  // Claude service health (status.claude.com)
+  getServiceStatus: () => ipcRenderer.invoke('get-service-status'),
+  toggleStatusPanel: (payload) => ipcRenderer.invoke('toggle-status-panel', payload),
 
   // Bar mode (Windows appbar docking)
   setBarMode: (enabled, edge) => ipcRenderer.invoke('set-bar-mode', { enabled, edge }),

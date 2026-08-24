@@ -28,6 +28,18 @@ const SYSMON_INTERVAL = 2000;
 // Above this a resource is considered under pressure and its bar turns red.
 const SYSMON_HOT_THRESHOLD = 85;
 
+// --- Claude service status (status.claude.com) ---
+let statusTimer = null;
+// The 22px row plus the section's border, padding and top margin — measured as
+// the delta this section adds to the document, not derived from the CSS, so it
+// stays honest if the padding changes. Same bookkeeping as SYSMON_HEIGHT:
+// resizeWidget() is a sum of fixed section heights, which holds only as long as
+// this row never wraps. Hence the single-row design.
+const STATUS_HEIGHT = 47;
+// main.js polls the status page once a minute and answers from cache, so this
+// only has to be often enough that the dot is not visibly behind.
+const STATUS_INTERVAL = 30000;
+
 // Elapsed-time ring thresholds (session/weekly/extra-row countdown circles).
 // Deliberately hardcoded and independent from the user-configurable
 // warnThreshold/dangerThreshold settings below, which describe *usage volume*
@@ -106,6 +118,16 @@ const elements = {
     ramFill: document.getElementById('ramFill'),
     ramPct: document.getElementById('ramPct'),
     ramDetail: document.getElementById('ramDetail'),
+
+    statusSection: document.getElementById('statusSection'),
+    statusRow: document.getElementById('statusRow'),
+    statusChips: document.getElementById('statusChips'),
+    statusText: document.getElementById('statusText'),
+    compactStatusItem: document.getElementById('compactStatusItem'),
+    compactStatusDot: document.getElementById('compactStatusDot'),
+    barStatusItem: document.getElementById('barStatusItem'),
+    barStatusDot: document.getElementById('barStatusDot'),
+    barStatusText: document.getElementById('barStatusText'),
 
     compactSysmon: document.getElementById('compactSysmon'),
     compactCpuPct: document.getElementById('compactCpuPct'),
@@ -272,8 +294,9 @@ async function init() {
     }
 
     // The system monitor is always on in both views, so it starts with the app
-    // and runs for its lifetime.
+    // and runs for its lifetime. Same for the Claude service indicator.
     startSysmonPolling();
+    startServiceStatusPolling();
 
     // Reflect docking that is already in effect (e.g. after a renderer reload),
     // and disable the control outright where the platform cannot support it.
@@ -361,6 +384,13 @@ function setupEventListeners() {
     elements.barUndockBtn.addEventListener('click', () => {
         window.electronAPI.setBarMode(false);
     });
+
+    // Every status indicator toggles the detail panel. Nothing in the widget
+    // can act on an outage, so the affordance is "show me the details" — and
+    // the details belong in the popup, not crammed into a 34px strip.
+    for (const el of [elements.statusRow, elements.barStatusItem, elements.compactStatusItem]) {
+        el.addEventListener('click', () => toggleStatusPanel(el));
+    }
 
     elements.barModeToggle.addEventListener('change', async () => {
         const achieved = await window.electronAPI.setBarMode(elements.barModeToggle.checked);
@@ -1066,6 +1096,100 @@ function startSysmonPolling() {
     sysmonTimer = setInterval(refreshSystemStats, SYSMON_INTERVAL);
 }
 
+// --- Claude service status ----------------------------------------------------
+
+/**
+ * Paint the indicator in all three views from a single main-process snapshot.
+ * Level 'unknown' is rendered as grey and says so, rather than falling back to
+ * an optimistic green — the same rule the system monitor uses for a missing
+ * reading.
+ */
+function renderServiceStatus(status) {
+    if (!status) return;
+
+    const components = status.components || [];
+    const incidents = status.incidents || [];
+    const failing = components.filter((c) => c.level !== 'ok');
+
+    // One tooltip for every view: it is where the detail the collapsed views
+    // drop has to end up, so it is built once and shared.
+    const lines = components.map((c) => `${c.label}: ${c.statusText}`);
+    for (const inc of incidents) lines.push('— ' + inc.name);
+    if (status.error) lines.push('(' + status.error + ')');
+    lines.push('Click to open status.claude.com');
+    const tooltip = lines.join('\n');
+
+    // Widget row: a chip per component, then a one-line summary on the right.
+    elements.statusChips.replaceChildren(...components.map((c) => {
+        const chip = document.createElement('span');
+        chip.className = 'status-chip';
+        chip.title = `${c.label}: ${c.statusText}`;
+        const dot = document.createElement('span');
+        dot.className = 'status-dot ' + c.level;
+        chip.append(dot, document.createTextNode(c.short));
+        return chip;
+    }));
+    // An incident title says more than the component state it produced, so it
+    // takes the summary slot whenever there is one.
+    elements.statusText.textContent = incidents.length && status.level !== 'ok'
+        ? incidents[0].name
+        : status.overallText;
+    elements.statusText.className = 'status-text ' + status.level;
+    elements.statusRow.title = tooltip;
+
+    // Compact strip and docked bar: one dot for the worst of the three.
+    elements.compactStatusDot.className = 'status-dot ' + status.level;
+    elements.compactStatusItem.title = tooltip;
+    elements.barStatusDot.className = 'status-dot ' + status.level;
+    elements.barStatusItem.title = tooltip;
+
+    // Naming the affected service costs ~40px of a strip that has none to
+    // spare, so the bar's label appears only while something is actually
+    // wrong, and collapses to a count once more than one service is involved.
+    let barLabel = '';
+    if (status.level === 'unknown') barLabel = 'status?';
+    else if (failing.length === 1) barLabel = failing[0].short;
+    else if (failing.length > 1) barLabel = failing.length + ' services';
+    elements.barStatusText.textContent = barLabel;
+    elements.barStatusText.className = 'bar-status-text ' + status.level;
+    elements.barStatusText.style.display = barLabel ? '' : 'none';
+}
+
+/**
+ * Open (or close) the detail popup, anchored to whichever indicator was
+ * clicked. The anchor goes over as the element's own CSS-pixel rect; the main
+ * process turns it into a screen position, since only it knows where the window
+ * sits and which display it is on.
+ *
+ * The theme rides along because the panel is a separate window with no access
+ * to the settings store.
+ */
+function toggleStatusPanel(anchorEl) {
+    const r = anchorEl.getBoundingClientRect();
+    window.electronAPI.toggleStatusPanel({
+        anchor: { x: r.left, y: r.top, width: r.width, height: r.height },
+        theme: document.body.classList.contains('theme-light') ? 'light' : 'dark',
+    });
+}
+
+async function refreshServiceStatus() {
+    try {
+        renderServiceStatus(await window.electronAPI.getServiceStatus());
+    } catch (err) {
+        console.warn('Service status unavailable:', err);
+    }
+}
+
+/**
+ * Runs for the app's lifetime — every view carries this indicator, and unlike
+ * usage data it costs nothing to keep current: main.js owns the network poll
+ * and answers from cache.
+ */
+function startServiceStatusPolling() {
+    if (statusTimer) return;
+    refreshServiceStatus();
+    statusTimer = setInterval(refreshServiceStatus, STATUS_INTERVAL);
+}
 const EXPAND_OVERHEAD = 28; // margin-top(12) + padding-top(6) + bottom buffer(10)
 
 function resizeWidget() {
@@ -1077,7 +1201,9 @@ function resizeWidget() {
         : 0;
     const graphOffset = graphVisible ? GRAPH_HEIGHT : 0;
     const sysmonOffset = SYSMON_HEIGHT; // always shown
-    const totalHeight = WIDGET_HEIGHT_COLLAPSED + expandedOffset + graphOffset + sysmonOffset;
+    const statusOffset = STATUS_HEIGHT; // always shown, one fixed row
+    const totalHeight = WIDGET_HEIGHT_COLLAPSED + expandedOffset + graphOffset
+        + sysmonOffset + statusOffset;
     window.electronAPI.resizeWindow(totalHeight);
 }
 

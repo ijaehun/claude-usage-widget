@@ -1,0 +1,217 @@
+/* ===========================================================================
+   Status panel — the click-toggled popup behind the service-status indicator.
+   Its own stylesheet rather than a corner of styles.css: this runs in a
+   separate BrowserWindow that shares none of the widget's layout, and the two
+   files having nothing to say to each other is the point.
+
+   The window is frameless and transparent, so .panel draws its own surface.
+   Nothing here may rely on the widget's body classes.
+   =========================================================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    background: transparent;
+    /* Rounded corners need the window's own backdrop to stay clear, and the
+       shadow needs somewhere to fall. */
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    cursor: default;
+}
+
+.panel {
+    /* Height is content-driven and read back by status-panel.js — never set a
+       height here, or the window will size itself to a constant. */
+    width: 100%;
+    background: #1c1c20;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+    color: #e5e5e5;
+    font-size: 11px;
+}
+
+/* --- header --------------------------------------------------------------- */
+
+.panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.panel-title {
+    color: #a78bfa;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.panel-overall {
+    color: #808080;
+    font-size: 10px;
+    text-align: right;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.panel-overall.ok      { color: #34d399; }
+.panel-overall.warn    { color: #fbbf24; }
+.panel-overall.down    { color: #f87171; }
+.panel-overall.unknown { color: #6b7280; }
+
+/* --- one row per watched component ---------------------------------------- */
+
+.panel-rows {
+    padding: 6px 12px 8px;
+}
+
+.panel-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 24px;
+}
+
+.panel-row-name {
+    color: #d4d4d4;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.panel-row-state {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.panel-row-state.ok      { color: #6b7280; }  /* the boring case stays quiet */
+.panel-row-state.warn    { color: #fbbf24; }
+.panel-row-state.down    { color: #f87171; }
+.panel-row-state.unknown { color: #6b7280; }
+
+/* Shared with the widget's indicator, redefined here because this window does
+   not load styles.css. */
+.status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #6b7280;
+    flex: 0 0 auto;
+}
+
+.status-dot.ok      { background: #34d399; }
+.status-dot.warn    { background: #fbbf24; }
+.status-dot.down    { background: #f87171; }
+.status-dot.unknown { background: #6b7280; }
+
+/* --- incidents ------------------------------------------------------------ */
+
+.panel-incidents {
+    padding: 8px 12px 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(248, 113, 113, 0.06);
+}
+
+.panel-incident + .panel-incident {
+    margin-top: 8px;
+}
+
+.panel-incident-name {
+    color: #f4f4f4;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.panel-incident-meta {
+    margin-top: 3px;
+    color: #a0a0a0;
+    font-size: 9.5px;
+    text-transform: capitalize;
+}
+
+/* --- footer --------------------------------------------------------------- */
+
+.panel-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 12px 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.panel-updated {
+    color: #6b6b6b;
+    font-size: 9.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.panel-link {
+    background: none;
+    border: none;
+    color: #a78bfa;
+    font: inherit;
+    font-size: 9.5px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+}
+
+.panel-link:hover {
+    color: #c4b5fd;
+    text-decoration: underline;
+}
+
+/* ===========================================================================
+   Light theme. Set by status-panel.js from the ?theme= query, which the widget
+   passes through from its own setting — the panel has no access to the store.
+   =========================================================================== */
+
+body.theme-light .panel {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+    color: #2a2a2a;
+}
+
+body.theme-light .panel-head,
+body.theme-light .panel-incidents,
+body.theme-light .panel-foot {
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .panel-title { color: #7c3aed; }
+body.theme-light .panel-overall { color: #8a8a8a; }
+body.theme-light .panel-overall.ok   { color: #059669; }
+body.theme-light .panel-overall.warn { color: #b45309; }
+body.theme-light .panel-overall.down { color: #dc2626; }
+body.theme-light .panel-row-name { color: #2a2a2a; }
+body.theme-light .panel-row-state.ok { color: #9a9a9a; }
+body.theme-light .panel-row-state.warn { color: #b45309; }
+body.theme-light .panel-row-state.down { color: #dc2626; }
+body.theme-light .status-dot.ok   { background: #10b981; }
+body.theme-light .status-dot.warn { background: #d97706; }
+body.theme-light .status-dot.down { background: #dc2626; }
+body.theme-light .panel-incidents { background: rgba(220, 38, 38, 0.05); }
+body.theme-light .panel-incident-name { color: #1a1a1a; }
+body.theme-light .panel-incident-meta { color: #7a7a7a; }
+body.theme-light .panel-updated { color: #9a9a9a; }
+body.theme-light .panel-link { color: #7c3aed; }
+body.theme-light .panel-link:hover { color: #6d28d9; }

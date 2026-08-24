@@ -1869,6 +1869,123 @@ body.theme-light .compact-sys-val.unavailable {
 }
 
 /* ===========================================================================
+   Claude service status — fed by status.claude.com, shown in all three views.
+   =========================================================================== */
+
+.status-section {
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    margin-top: 10px;
+    padding: 8px 16px 6px 12px;
+}
+
+/* A button, not a div: the row clicks through to the status page, so it should
+   be keyboard-reachable and carry the no-drag region on its own. */
+.status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 22px;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+}
+
+.status-label {
+    color: #a0a0a0;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+/* Never shrinks: the chips *are* the status. When the row runs out of room it
+   is the summary text beside them that ellipsises. */
+.status-chips {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+}
+
+.status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #808080;
+    font-size: 9.5px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* The single piece shared by the widget row, the compact strip and the docked
+   bar, so a status colour is defined in exactly one place. */
+.status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #6b7280;
+    flex: 0 0 auto;
+}
+
+.status-dot.ok      { background: #34d399; }
+.status-dot.warn    { background: #fbbf24; }
+.status-dot.down    { background: #f87171; }
+.status-dot.unknown { background: #6b7280; }
+
+/* Only the failing states pulse. A green dot breathing all day is motion the
+   widget has to justify, and "nothing is wrong" does not justify it. */
+.status-dot.warn,
+.status-dot.down {
+    animation: status-pulse 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+
+.status-text {
+    margin-left: auto;
+    min-width: 0;
+    color: #808080;
+    font-size: 9.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.status-text.warn    { color: #fbbf24; }
+.status-text.down    { color: #f87171; }
+.status-text.unknown { color: #666; }
+
+/* Compact mode carries the dot alone, inside the existing system strip. */
+.compact-status {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+/* Light theme */
+body.theme-light .status-section { border-top-color: rgba(0, 0, 0, 0.07); }
+body.theme-light .status-label { color: #6b6b6b; }
+body.theme-light .status-chip { color: #8a8a8a; }
+body.theme-light .status-text { color: #8a8a8a; }
+body.theme-light .status-text.unknown { color: #b0b0b0; }
+body.theme-light .status-dot.ok   { background: #10b981; }
+body.theme-light .status-dot.warn { background: #d97706; }
+body.theme-light .status-dot.down { background: #dc2626; }
+body.theme-light .status-text.warn { color: #b45309; }
+body.theme-light .status-text.down { color: #dc2626; }
+
+/* ===========================================================================
    Bar mode — the docked appbar strip. The window here is the full width of a
    screen edge and only BAR_HEIGHT tall, so this layout is a single row: no
    wrapping, no scrolling, everything on one line.
@@ -1979,6 +2096,29 @@ body.bar-mode .compact-content {
     min-width: 44px;
 }
 
+/* Service health light. Text only materialises when something is wrong — see
+   the note in index.html on why the strip cannot afford a permanent label. */
+.bar-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+    background: none;
+    border: none;
+    padding: 0 2px;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+}
+
+.bar-status-text {
+    color: #f87171;
+    font-size: 10.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.bar-status-text.warn    { color: #fbbf24; }
+.bar-status-text.unknown { color: #808080; }
 .bar-icon-btn {
     background: none;
     border: none;
@@ -2040,6 +2180,8 @@ body.theme-light .bar-brand { color: #7c3aed; }
 body.theme-light .bar-val.hot { color: #dc2626; }
 body.theme-light .bar-val.unavailable { color: #b0b0b0; }
 body.theme-light .bar-icon-btn { color: #8a8a8a; }
+body.theme-light .bar-status-text.warn    { color: #b45309; }
+body.theme-light .bar-status-text.unknown { color: #8a8a8a; }
 body.theme-light .bar-icon-btn:hover { color: #2a2a2a; }
 
 /* Reuse the title-bar refresh spin for the bar's own refresh control. */

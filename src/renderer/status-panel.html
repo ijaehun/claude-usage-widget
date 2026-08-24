@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'none';
+        script-src 'self';
+        style-src 'self';
+        font-src 'self';
+        img-src 'self' data:;
+        connect-src 'none';
+    ">
+    <title>Claude Service Status</title>
+    <link rel="stylesheet" href="status-panel.css">
+</head>
+
+<body>
+    <!-- #panel, not body, is what status-panel.js measures: body fills the
+         window, so its height would just report whatever the window already is
+         and the panel could never size itself to its content. -->
+    <div class="panel" id="panel">
+        <div class="panel-head">
+            <span class="panel-title">Claude service status</span>
+            <span class="panel-overall" id="panelOverall">Checking…</span>
+        </div>
+
+        <div class="panel-rows" id="panelRows"></div>
+
+        <!-- Only rendered when there is something unresolved. -->
+        <div class="panel-incidents" id="panelIncidents" style="display: none;"></div>
+
+        <div class="panel-foot">
+            <span class="panel-updated" id="panelUpdated">--</span>
+            <button class="panel-link" id="panelLink">status.claude.com →</button>
+        </div>
+    </div>
+    <script src="status-panel.js"></script>
+</body>
+
+</html>

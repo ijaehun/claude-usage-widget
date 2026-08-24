@@ -184,6 +184,18 @@
                     <div id="extraRows"></div>
                 </div>
 
+                <!-- Claude service health (status.claude.com). Deliberately one
+                     fixed-height row: resizeWidget() sums fixed section
+                     heights, so letting an incident title wrap would leave the
+                     window the wrong size. The full detail lives in the
+                     tooltip, and the row clicks through to the status page. -->
+                <div class="status-section" id="statusSection">
+                    <button class="status-row" id="statusRow" title="Claude service status">
+                        <span class="status-label">Status</span>
+                        <span class="status-chips" id="statusChips"></span>
+                        <span class="status-text" id="statusText">Checking…</span>
+                    </button>
+                </div>
                 <!-- System Monitor (local machine CPU / GPU / RAM) -->
                 <div class="sysmon-section" id="sysmonSection">
                     <div class="sysmon-row">
@@ -264,6 +276,11 @@
     <!-- Local machine stats — always on in compact mode, since a small
                          always-visible widget is exactly where these matter most. -->
                     <div class="compact-sysmon" id="compactSysmon">
+                        <!-- Rides in the existing strip rather than claiming a
+                             row of its own, so compact mode keeps its height. -->
+                        <span class="compact-sys-item compact-status" id="compactStatusItem" title="Claude service status">
+                            <span class="status-dot unknown" id="compactStatusDot"></span>
+                        </span>
                         <span class="compact-sys-item"><span class="compact-sys-key">CPU</span> <span class="compact-sys-val" id="compactCpuPct">--</span></span>
                         <span class="compact-sys-item"><span class="compact-sys-key">GPU</span> <span class="compact-sys-val" id="compactGpuPct">--</span></span>
                         <span class="compact-sys-item"><span class="compact-sys-key">RAM</span> <span class="compact-sys-val" id="compactRamPct">--</span></span>
@@ -277,6 +294,16 @@
             <div class="bar-content" id="barContent" style="display: none;">
                 <div class="bar-group bar-group-claude">
                     <span class="bar-brand">Claude</span>
+                    <!-- Service health from status.claude.com. Sits at the head
+                         of the left group, next to the brand it describes: that
+                         is also the position furthest from the clipped right
+                         end. Collapses to a bare dot while everything is
+                         operational, because the strip has no width to spare
+                         for a label that only ever says "fine". -->
+                    <button class="bar-status" id="barStatusItem" title="Claude service status">
+                        <span class="status-dot unknown" id="barStatusDot"></span>
+                        <span class="bar-status-text" id="barStatusText" style="display: none;"></span>
+                    </button>
                     <button class="bar-icon-btn" id="barRefreshBtn" title="Refresh Claude usage">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <path d="M23 4v6h-6M1 20v-6h6" />
