@@ -1268,12 +1268,31 @@ function restoreAlwaysOnTop() {
   mainWindow.setAlwaysOnTop(store.get('settings.alwaysOnTop', true), 'floating');
 }
 
+// Win32 handle of the main window, for the z-order call below.
+function mainHwnd() {
+  if (!mainWindow || mainWindow.isDestroyed()) return 0;
+  const buf = mainWindow.getNativeWindowHandle();
+  return buf.length === 8 ? Number(buf.readBigUInt64LE(0)) : buf.readUInt32LE(0);
+}
+
 // Step aside while the flyout is up, then take the z-order back.
+//
+// Clearing the topmost flag is necessary but NOT sufficient, which is the
+// trap this originally fell into. setAlwaysOnTop(false) issues
+// SetWindowPos(HWND_NOTOPMOST), and that lands the window at the FRONT of the
+// non-topmost band — still ahead of a flyout that is already open. Measured:
+// the bar went from z=79 to z=101 against an ordinary window at z=105, so it
+// kept covering the flyout and the dodge looked like it did nothing at all.
+// stepAside() then inserts us directly behind the flyout HWND.
 function onFlyoutChange(open) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   flyoutDodging = open;
-  if (open) mainWindow.setAlwaysOnTop(false);
-  else restoreAlwaysOnTop();
+  if (open) {
+    mainWindow.setAlwaysOnTop(false);
+    trayFlyout.stepAside(mainHwnd());
+  } else {
+    restoreAlwaysOnTop();
+  }
 }
 
 // Bar mode: dock the widget to a screen edge as a Windows appbar. Returns the
@@ -1350,7 +1369,7 @@ function applyBarMode(enabled, edge) {
   // just stays topmost — the old behaviour, not a worse one.
   if (ok) {
     restoreAlwaysOnTop();
-    const watching = trayFlyout.start(onFlyoutChange);
+    const watching = trayFlyout.start(onFlyoutChange, mainHwnd());
     debugLog('[BarMode] flyout watch=' + watching + ' class=' + trayFlyout.matched());
   }
 
