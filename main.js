@@ -1283,6 +1283,10 @@ function applyBarMode(enabled, edge) {
     mainWindow.setBounds({ x, y, width, height });
     store.delete('preDockBounds');
 
+    // Docking drops always-on-top (see the dock path below). A floating
+    // widget has no reserved strip protecting it, so the setting applies again.
+    mainWindow.setAlwaysOnTop(store.get('settings.alwaysOnTop', true), 'floating');
+
     // The renderer owns the real height (the layout grew when the system
     // monitor became permanent), so it re-runs its own sizing pass once it
     // knows bar mode is off. WIDGET_HEIGHT above is only a floor.
@@ -1305,6 +1309,25 @@ function applyBarMode(enabled, edge) {
   if (!ok) store.delete('preDockBounds');
   store.set('settings.barMode', ok);
   store.set('settings.barEdge', targetEdge);
+
+  // A docked bar must NOT be always-on-top. The appbar reservation is what
+  // keeps other windows out of the strip; topmost is a second, cruder
+  // mechanism that additionally puts us in front of windows we have no
+  // business covering.
+  //
+  // The tray overflow flyout ("show hidden icons") is the case that matters.
+  // It is a plain non-topmost window (class TopLevelWindowForOverflowXamlIsland)
+  // and it opens exactly over the strip, so while we are topmost it can never
+  // come forward — a topmost window is in front of every non-topmost one no
+  // matter what the z-order between them looks like. No amount of leaving the
+  // z-order alone fixes that; only giving up topmost does.
+  //
+  // It costs nothing while docked: the reservation already puts the strip
+  // outside every other window's work area, so nothing maximises over it.
+  // A fullscreen app, which ignores the work area, now goes in front — which
+  // is what src/appbar.js already assumes on ABN_FULLSCREENAPP.
+  if (ok) mainWindow.setAlwaysOnTop(false);
+
   mainWindow.webContents.send('bar-mode-changed', ok);
   return ok;
 }
@@ -1398,7 +1421,12 @@ ipcMain.handle('save-settings', (event, settings) => {
     } else {
       mainWindow.setSkipTaskbar(settings.minimizeToTray);
     }
-    mainWindow.setAlwaysOnTop(settings.alwaysOnTop, 'floating');
+    // Skipped while docked: the bar deliberately runs without always-on-top,
+    // so a settings save must not quietly put it back in front of the tray
+    // flyout. Undocking re-applies the stored setting.
+    if (!appbar.isDocked()) {
+      mainWindow.setAlwaysOnTop(settings.alwaysOnTop, 'floating');
+    }
   }
 
   if (!settings.showTrayStats) {
@@ -1677,7 +1705,8 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   //
   // Guarded on isAlwaysOnTop(): see the interval in whenReady() for why a
   // redundant call is not free.
-  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isAlwaysOnTop()) {
+  if (mainWindow && !mainWindow.isDestroyed() && !appbar.isDocked()
+      && !mainWindow.isAlwaysOnTop()) {
     const alwaysOnTop = store.get('settings.alwaysOnTop', true);
     if (alwaysOnTop) {
       mainWindow.setAlwaysOnTop(true, 'floating');
@@ -1770,7 +1799,8 @@ app.whenReady().then(async () => {
   // the flag nor our z-order, so this now fires only when something really
   // did clear it.
   setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isAlwaysOnTop()) {
+    if (mainWindow && !mainWindow.isDestroyed() && !appbar.isDocked()
+        && !mainWindow.isAlwaysOnTop()) {
       const alwaysOnTopSetting = store.get('settings.alwaysOnTop', true);
       if (alwaysOnTopSetting) {
         mainWindow.setAlwaysOnTop(true, 'floating');
