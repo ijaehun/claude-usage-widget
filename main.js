@@ -8,6 +8,7 @@ const serviceStatus = require('./src/service-status');
 const statusPanel = require('./src/status-panel');
 const { fadeWindow } = require('./src/window-fade');
 const appbar = require('./src/appbar');
+const trayFlyout = require('./src/tray-flyout');
 
 // Required for Windows taskbar features (notifications, Jump List tasks) to register
 // reliably under one stable identity — without this, dev (npm start) and packaged
@@ -1254,6 +1255,27 @@ ipcMain.on('show-notification', (event, { title, body }) => {
   }
 });
 
+// True while the bar has stepped out of the way for the notification-area
+// overflow flyout. Every path that sets always-on-top consults this, because
+// putting the flag back while the flyout is open is exactly what we are
+// avoiding — and the 5s re-assertion interval would otherwise do it, since it
+// fires precisely when the flag is clear.
+let flyoutDodging = false;
+
+// The z-order the bar should hold when nothing is dodging out of its way.
+function restoreAlwaysOnTop() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setAlwaysOnTop(store.get('settings.alwaysOnTop', true), 'floating');
+}
+
+// Step aside while the flyout is up, then take the z-order back.
+function onFlyoutChange(open) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  flyoutDodging = open;
+  if (open) mainWindow.setAlwaysOnTop(false);
+  else restoreAlwaysOnTop();
+}
+
 // Bar mode: dock the widget to a screen edge as a Windows appbar. Returns the
 // state actually achieved, which may be false if the platform or the shell
 // refused — callers must not assume the request succeeded.
@@ -1283,9 +1305,10 @@ function applyBarMode(enabled, edge) {
     mainWindow.setBounds({ x, y, width, height });
     store.delete('preDockBounds');
 
-    // Docking drops always-on-top (see the dock path below). A floating
-    // widget has no reserved strip protecting it, so the setting applies again.
-    mainWindow.setAlwaysOnTop(store.get('settings.alwaysOnTop', true), 'floating');
+    // Only the docked bar sits where the flyout opens, so the watch ends with
+    // the dock. stop() reports closed first, so this cannot strand us aside.
+    trayFlyout.stop();
+    restoreAlwaysOnTop();
 
     // The renderer owns the real height (the layout grew when the system
     // monitor became permanent), so it re-runs its own sizing pass once it
@@ -1310,23 +1333,26 @@ function applyBarMode(enabled, edge) {
   store.set('settings.barMode', ok);
   store.set('settings.barEdge', targetEdge);
 
-  // A docked bar must NOT be always-on-top. The appbar reservation is what
-  // keeps other windows out of the strip; topmost is a second, cruder
-  // mechanism that additionally puts us in front of windows we have no
-  // business covering.
+  // The bar stays always-on-top and steps aside only while the notification
+  // area's overflow flyout is open.
   //
-  // The tray overflow flyout ("show hidden icons") is the case that matters.
-  // It is a plain non-topmost window (class TopLevelWindowForOverflowXamlIsland)
-  // and it opens exactly over the strip, so while we are topmost it can never
-  // come forward — a topmost window is in front of every non-topmost one no
-  // matter what the z-order between them looks like. No amount of leaving the
-  // z-order alone fixes that; only giving up topmost does.
+  // Both halves are needed. The flyout is a plain non-topmost window, and a
+  // topmost window is in front of every non-topmost one whatever the z-order
+  // between them says, so a topmost bar hides a flyout that opens directly
+  // over the strip. But giving up topmost for good costs more than it buys:
+  // a maximized window stops at the reservation, which leaves its bottom edge
+  // mid-screen, and Windows draws that window's drop shadow below the edge and
+  // onto us. Measured, focusing such a window took the strip from a flat 243 to
+  // a 174..225 gradient over its whole height.
   //
-  // It costs nothing while docked: the reservation already puts the strip
-  // outside every other window's work area, so nothing maximises over it.
-  // A fullscreen app, which ignores the work area, now goes in front — which
-  // is what src/appbar.js already assumes on ABN_FULLSCREENAPP.
-  if (ok) mainWindow.setAlwaysOnTop(false);
+  // If the watch cannot run (non-Windows, FFI missing, or the flyout class
+  // renamed by a Windows update) it reports so and never fires, and the bar
+  // just stays topmost — the old behaviour, not a worse one.
+  if (ok) {
+    restoreAlwaysOnTop();
+    const watching = trayFlyout.start(onFlyoutChange);
+    debugLog('[BarMode] flyout watch=' + watching + ' class=' + trayFlyout.matched());
+  }
 
   mainWindow.webContents.send('bar-mode-changed', ok);
   return ok;
@@ -1421,10 +1447,10 @@ ipcMain.handle('save-settings', (event, settings) => {
     } else {
       mainWindow.setSkipTaskbar(settings.minimizeToTray);
     }
-    // Skipped while docked: the bar deliberately runs without always-on-top,
-    // so a settings save must not quietly put it back in front of the tray
-    // flyout. Undocking re-applies the stored setting.
-    if (!appbar.isDocked()) {
+    // Skipped mid-dodge: the flyout is open and the bar is deliberately out of
+    // the way, so a settings save must not shove it back in front. The dodge
+    // ends by re-reading the setting, so the new value still takes effect.
+    if (!flyoutDodging) {
       mainWindow.setAlwaysOnTop(settings.alwaysOnTop, 'floating');
     }
   }
@@ -1705,7 +1731,7 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   //
   // Guarded on isAlwaysOnTop(): see the interval in whenReady() for why a
   // redundant call is not free.
-  if (mainWindow && !mainWindow.isDestroyed() && !appbar.isDocked()
+  if (mainWindow && !mainWindow.isDestroyed() && !flyoutDodging
       && !mainWindow.isAlwaysOnTop()) {
     const alwaysOnTop = store.get('settings.alwaysOnTop', true);
     if (alwaysOnTop) {
@@ -1799,7 +1825,7 @@ app.whenReady().then(async () => {
   // the flag nor our z-order, so this now fires only when something really
   // did clear it.
   setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed() && !appbar.isDocked()
+    if (mainWindow && !mainWindow.isDestroyed() && !flyoutDodging
         && !mainWindow.isAlwaysOnTop()) {
       const alwaysOnTopSetting = store.get('settings.alwaysOnTop', true);
       if (alwaysOnTopSetting) {
@@ -1828,6 +1854,7 @@ app.on('before-quit', () => {
   isQuitting = true;
   systemStats.stop();
   serviceStatus.stop();
+  trayFlyout.stop();
   // An orphaned popup would keep the process alive past the last real window.
   statusPanel.close();
   // Release the reserved edge before the process goes away, otherwise the
