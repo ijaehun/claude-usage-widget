@@ -1674,7 +1674,10 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   // Re-assert always-on-top after hidden BrowserWindows from fetchViaWindow
   // are destroyed — creating/destroying BrowserWindows can temporarily disrupt
   // the main window's z-order on some OS/window manager combinations.
-  if (mainWindow && !mainWindow.isDestroyed()) {
+  //
+  // Guarded on isAlwaysOnTop(): see the interval in whenReady() for why a
+  // redundant call is not free.
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isAlwaysOnTop()) {
     const alwaysOnTop = store.get('settings.alwaysOnTop', true);
     if (alwaysOnTop) {
       mainWindow.setAlwaysOnTop(true, 'floating');
@@ -1746,8 +1749,28 @@ app.whenReady().then(async () => {
 
   // Periodic always-on-top re-assertion to recover from z-order disruptions
   // (hidden window spawns, window manager shortcuts, alt-tab, etc.)
+  //
+  // The isAlwaysOnTop() guard is not an optimization, it is the whole point.
+  // setAlwaysOnTop(true) on a window that is ALREADY topmost is not a no-op:
+  // Electron issues a real SetWindowPos(HWND_TOPMOST), which re-raises us to
+  // the front of the topmost band. Unguarded, this interval therefore shoved
+  // the bar in front of every other topmost window every five seconds — the
+  // tray overflow flyout ("show hidden icons") and fullscreen video among
+  // them. Measured: two topmost windows, ours behind, one redundant call and
+  // ours is in front.
+  //
+  // src/appbar.js already declines to fight for z-order on ABN_FULLSCREENAPP
+  // because it only causes flicker; this was fighting on its behalf.
+  //
+  // The disruption this was written to repair is a lost topmost FLAG, and the
+  // guard still catches that: isAlwaysOnTop() is not a stale cache, it follows
+  // the real WS_EX_TOPMOST — clearing the bit with an external SetWindowPos
+  // flips it to false, which is precisely when we want to fire. Churning
+  // hidden fetch windows, on the other hand, was measured to disturb neither
+  // the flag nor our z-order, so this now fires only when something really
+  // did clear it.
   setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isAlwaysOnTop()) {
       const alwaysOnTopSetting = store.get('settings.alwaysOnTop', true);
       if (alwaysOnTopSetting) {
         mainWindow.setAlwaysOnTop(true, 'floating');
