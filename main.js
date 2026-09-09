@@ -1565,6 +1565,10 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   if (usageResult.status === 'rejected') {
     const error = usageResult.reason;
     debugLog('API request failed:', error.message);
+    // RateLimited is deliberately absent: a 429 is transient and the stored
+    // sessionKey is still good, so it must fall through to the plain rethrow
+    // below rather than log the user out. See RATE_LIMIT_SIGNATURES in
+    // src/fetch-via-window.js.
     const isBlocked = error.message.startsWith('CloudflareBlocked')
       || error.message.startsWith('CloudflareChallenge')
       || error.message.startsWith('UnexpectedHTML');

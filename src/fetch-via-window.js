@@ -26,11 +26,40 @@ const BLOCKED_SIGNATURES = [
 ];
 
 /**
+ * Transient rate-limit signatures. Unlike BLOCKED_SIGNATURES these do NOT mean
+ * the session is bad, so the caller must not discard the stored sessionKey over
+ * one: the same cookie will work again once the limit clears. Checked FIRST,
+ * because a Cloudflare-served 429 is an HTML page and would otherwise match
+ * `<html` and be misread as UnexpectedHTML — which is exactly the path that
+ * logs the user out.
+ *
+ * The patterns are deliberately narrow. A bare "429" is not one of them: the
+ * real usage payload carries a support-article URL (…/articles/12429409) that
+ * contains those digits.
+ */
+const RATE_LIMIT_SIGNATURES = [
+  'rate limit',
+  'too many requests',
+  '"status":429',
+  '"status": 429',
+];
+
+/**
  * Parse and validate response body text
  * @param {string} bodyText - Raw body text from the page * @returns {Object} Parsed JSON data
  * @throws {Error} If blocked signatures detected or JSON parsing fails
  */
 function parseResponseBody(bodyText) {
+  // Rate limits are transient and session-bound blocks are not, so they are
+  // classified apart. This runs before BLOCKED_SIGNATURES so a 429 delivered as
+  // an HTML page does not fall through to UnexpectedHTML.
+  const lower = bodyText.toLowerCase();
+  for (const sig of RATE_LIMIT_SIGNATURES) {
+    if (lower.includes(sig)) {
+      throw new Error(`RateLimited: ${bodyText.substring(0, 200)}`);
+    }
+  }
+
   // Detect known block/failure signatures before attempting JSON parse.
   // This provides explicit errors when Claude.ai modifies their API or CSP.
   for (const sig of BLOCKED_SIGNATURES) {
