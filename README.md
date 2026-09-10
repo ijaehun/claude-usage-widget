@@ -56,7 +56,7 @@ A beautiful, standalone desktop widget for **Windows, macOS, and Linux** that di
 ### Download Pre-built Release
 
 **Windows:**
-1. Download the latest `Claude-Usage-Widget-{version}-win-Setup.exe` (installer) or `Claude-Usage-Widget-{version}-win-portable.exe` (no install needed) from [Releases](../../releases)
+1. Download **[Claude-Usage-Widget-1.7.6-win-Setup.exe](https://github.com/ijaehun/claude-usage-widget/releases/download/v1.7.6-custom.1/Claude-Usage-Widget-1.7.6-win-Setup.exe)** (installer) or **[Claude-Usage-Widget-1.7.6-win-portable.exe](https://github.com/ijaehun/claude-usage-widget/releases/download/v1.7.6-custom.1/Claude-Usage-Widget-1.7.6-win-portable.exe)** (no install needed). Newer builds, if any, are on [Releases](../../releases)
 2. Run the installer or portable exe
 3. Launch "Claude Usage Widget" from the Start Menu (installer) or directly (portable)
 4. **To launch at Windows startup (portable only):** Press `Win+R`, type `shell:startup`, and copy the portable `.exe` into that folder. To update, copy the new version in and delete the old one.
