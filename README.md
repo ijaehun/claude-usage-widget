@@ -132,7 +132,7 @@ cp ~/.local/share/applications/claude-usage-widget.desktop ~/.config/autostart/
 - npm (comes with Node.js)
 
 ```bash
-git clone https://github.com/SlavomirDurej/claude-usage-widget.git
+git clone https://github.com/ijaehun/claude-usage-widget.git
 cd claude-usage-widget
 npm install
 npm start
