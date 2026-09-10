@@ -686,6 +686,19 @@ body.theme-light .graph-btn.active {
     box-shadow: 0 0 10px rgba(249, 115, 22, 0.3);
 }
 
+/* OpenAI Codex. Neutral rather than another hue: every distinct colour left is
+   already a Claude model, a system resource, or a warning state. Declared
+   before the threshold overrides below so warning/danger still win. */
+.progress-fill.codex {
+    background: linear-gradient(90deg, #a1a1aa 0%, #e4e4e7 100%);
+    box-shadow: 0 0 10px rgba(228, 228, 231, 0.2);
+}
+
+.progress-fill.codex-weekly {
+    background: linear-gradient(90deg, #71717a 0%, #a1a1aa 100%);
+    box-shadow: 0 0 10px rgba(161, 161, 170, 0.2);
+}
+
 /* Threshold color overrides for warning and danger states */
 .progress-fill.warning {
     background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
@@ -759,6 +772,10 @@ body.theme-light .graph-btn.active {
 
 .timer-progress.oauth {
     stroke: #f97316;
+}
+
+.timer-progress.codex {
+    stroke: #a1a1aa;
 }
 
 .timer-text {
@@ -1634,6 +1651,17 @@ body.theme-light .compact-expand-arrow {
     background: linear-gradient(90deg, #1D9E75 0%, #5DCAA5 100%);
 }
 
+/* Before the warning/danger overrides, which must still win. A step darker
+   than the widget's Codex fills: compact prints its white percentage on top of
+   the fill, and it all but disappeared against the lighter grey. */
+.compact-bar-fill.codex {
+    background: linear-gradient(90deg, #71717a 0%, #a1a1aa 100%);
+}
+
+.compact-bar-fill.codex-weekly {
+    background: linear-gradient(90deg, #52525b 0%, #71717a 100%);
+}
+
 .compact-bar-fill.warning {
     background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
 }
@@ -1986,6 +2014,64 @@ body.theme-light .status-text.warn { color: #b45309; }
 body.theme-light .status-text.down { color: #dc2626; }
 
 /* ===========================================================================
+   OpenAI Codex plan limits — src/codex-usage.js. Shown in all three views
+   while this machine has Codex usage to show, hidden otherwise.
+   =========================================================================== */
+
+.codex-section {
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    margin-top: 10px;
+    padding-top: 6px;
+}
+
+/* Compact mode splits one row between both windows. */
+.compact-bar-split {
+    display: flex;
+    gap: 4px;
+}
+
+.compact-bar-split .compact-bar-bg {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* Two classes, so it outranks .bar-brand, which is declared further down. */
+.bar-brand.bar-brand-codex {
+    color: #d4d4d8;
+}
+
+/* Without a rule between them, "Resets 1h 59m Codex" ran together and the
+   Codex name read as part of Claude's countdown. */
+.bar-group.bar-group-codex {
+    border-left: 1px solid rgba(255, 255, 255, 0.12);
+    padding-left: 10px;
+}
+
+/* Light theme. The neutral fills all but vanish on a light track, so they
+   darken — and the :not()s keep the threshold colours winning, which these
+   selectors would otherwise outrank. */
+body.theme-light .codex-section { border-top-color: rgba(0, 0, 0, 0.07); }
+body.theme-light .progress-fill.codex:not(.warning):not(.danger),
+body.theme-light .bar-fill.codex:not(.hot) {
+    background: linear-gradient(90deg, #3f3f46 0%, #71717a 100%);
+}
+body.theme-light .progress-fill.codex-weekly:not(.warning):not(.danger),
+body.theme-light .bar-fill.codex-weekly:not(.hot) {
+    background: linear-gradient(90deg, #71717a 0%, #a1a1aa 100%);
+}
+/* Compact prints dark text over its fill in the light theme, so here the
+   fills go light instead of dark. */
+body.theme-light .compact-bar-fill.codex:not(.warning):not(.danger) {
+    background: linear-gradient(90deg, #a1a1aa 0%, #d4d4d8 100%);
+}
+body.theme-light .compact-bar-fill.codex-weekly:not(.warning):not(.danger) {
+    background: linear-gradient(90deg, #c4c4cc 0%, #e4e4e7 100%);
+}
+body.theme-light .timer-progress.codex:not(.elapsed-warn):not(.elapsed-soon) { stroke: #52525b; }
+body.theme-light .bar-brand.bar-brand-codex { color: #3f3f46; }
+body.theme-light .bar-group.bar-group-codex { border-left-color: rgba(0, 0, 0, 0.12); }
+
+/* ===========================================================================
    Bar mode — the docked appbar strip. The window here is the full width of a
    screen edge and only BAR_HEIGHT tall, so this layout is a single row: no
    wrapping, no scrolling, everything on one line.
@@ -2079,6 +2165,8 @@ body.bar-mode .compact-content {
 .bar-fill.gpu    { background: linear-gradient(90deg, #34d399 0%, #6ee7b7 100%); }
 .bar-fill.vram   { background: linear-gradient(90deg, #fbbf24 0%, #fcd34d 100%); }
 .bar-fill.ram    { background: linear-gradient(90deg, #f472b6 0%, #f9a8d4 100%); }
+.bar-fill.codex  { background: linear-gradient(90deg, #a1a1aa 0%, #e4e4e7 100%); }
+.bar-fill.codex-weekly { background: linear-gradient(90deg, #71717a 0%, #a1a1aa 100%); }
 .bar-fill.hot    { background: linear-gradient(90deg, #ef4444 0%, #f87171 100%); }
 
 .bar-val {
@@ -2163,6 +2251,31 @@ body.bar-mode .compact-content {
     body.bar-mode .bar-group-system .bar-key { display: none; }
     body.bar-mode .bar-group-system .bar-item { gap: 4px; }
     body.bar-mode .bar-val { min-width: 26px; }
+}
+
+/* With the Codex group up, the strip carries roughly 250px more than the tiers
+   above were tuned for — on the 1151px portrait monitor that is 183px past the
+   edge before any of this. So each tier gives up one step earlier. The Codex
+   group keeps its name at every width, since bare numbers beside the Claude
+   meters would read as Claude's; its meters and keys go first, leaving
+   "Codex 69% 16%" in the same session-then-weekly order as the items beside
+   it. Measured, not estimated — re-run the harness after touching these. */
+@media (max-width: 1300px) {
+    body.bar-mode.has-codex .bar-group-claude .bar-brand { display: none; }
+    body.bar-mode.has-codex .bar-group-codex .bar-key,
+    body.bar-mode.has-codex .bar-group-codex .bar-meter { display: none; }
+    body.bar-mode.has-codex .bar-meter { width: 28px; }
+}
+
+@media (max-width: 1080px) {
+    body.bar-mode.has-codex .bar-brand.bar-brand-codex { display: inline; }
+    body.bar-mode.has-codex .bar-group-system .bar-key { display: none; }
+    body.bar-mode.has-codex .bar-group-system .bar-item { gap: 4px; }
+}
+
+@media (max-width: 900px) {
+    body.bar-mode.has-codex .bar-reset .bar-key { display: none; }
+    body.bar-mode.has-codex .bar-meter { width: 24px; }
 }
 
 /* Bar mode is a dark chrome element by design — it sits against the desktop

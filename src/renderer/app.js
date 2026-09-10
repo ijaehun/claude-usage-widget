@@ -40,6 +40,17 @@ const STATUS_HEIGHT = 47;
 // only has to be often enough that the dot is not visibly behind.
 const STATUS_INTERVAL = 30000;
 
+// --- OpenAI Codex plan limits (src/codex-usage.js) ---
+let codexTimer = null;
+let latestCodexUsage = null; // null while the Codex rows are hidden
+// Both rows plus the section's border, padding and top margin, measured as the
+// delta the section adds to the document, like STATUS_HEIGHT. Only added while
+// the section is shown.
+const CODEX_HEIGHT = 83;
+// main.js re-reads Codex's logs every 15s and answers from cache, so this only
+// has to keep the bars and countdowns from visibly lagging behind it.
+const CODEX_INTERVAL = 15000;
+
 // Elapsed-time ring thresholds (session/weekly/extra-row countdown circles).
 // Deliberately hardcoded and independent from the user-configurable
 // warnThreshold/dangerThreshold settings below, which describe *usage volume*
@@ -128,6 +139,28 @@ const elements = {
     barStatusItem: document.getElementById('barStatusItem'),
     barStatusDot: document.getElementById('barStatusDot'),
     barStatusText: document.getElementById('barStatusText'),
+
+    codexSection: document.getElementById('codexSection'),
+    codexSessionProgress: document.getElementById('codexSessionProgress'),
+    codexSessionPercentage: document.getElementById('codexSessionPercentage'),
+    codexSessionTimer: document.getElementById('codexSessionTimer'),
+    codexSessionTimeText: document.getElementById('codexSessionTimeText'),
+    codexSessionResetsAt: document.getElementById('codexSessionResetsAt'),
+    codexWeeklyProgress: document.getElementById('codexWeeklyProgress'),
+    codexWeeklyPercentage: document.getElementById('codexWeeklyPercentage'),
+    codexWeeklyTimer: document.getElementById('codexWeeklyTimer'),
+    codexWeeklyTimeText: document.getElementById('codexWeeklyTimeText'),
+    codexWeeklyResetsAt: document.getElementById('codexWeeklyResetsAt'),
+    compactCodexRow: document.getElementById('compactCodexRow'),
+    compactCodexSessionFill: document.getElementById('compactCodexSessionFill'),
+    compactCodexSessionPct: document.getElementById('compactCodexSessionPct'),
+    compactCodexWeeklyFill: document.getElementById('compactCodexWeeklyFill'),
+    compactCodexWeeklyPct: document.getElementById('compactCodexWeeklyPct'),
+    barCodexGroup: document.getElementById('barCodexGroup'),
+    barCodexSessionFill: document.getElementById('barCodexSessionFill'),
+    barCodexSessionPct: document.getElementById('barCodexSessionPct'),
+    barCodexWeeklyFill: document.getElementById('barCodexWeeklyFill'),
+    barCodexWeeklyPct: document.getElementById('barCodexWeeklyPct'),
 
     compactSysmon: document.getElementById('compactSysmon'),
     compactCpuPct: document.getElementById('compactCpuPct'),
@@ -297,6 +330,7 @@ async function init() {
     // and runs for its lifetime. Same for the Claude service indicator.
     startSysmonPolling();
     startServiceStatusPolling();
+    startCodexPolling();
 
     // Reflect docking that is already in effect (e.g. after a renderer reload),
     // and disable the control outright where the platform cannot support it.
@@ -1190,6 +1224,112 @@ function startServiceStatusPolling() {
     refreshServiceStatus();
     statusTimer = setInterval(refreshServiceStatus, STATUS_INTERVAL);
 }
+// --- OpenAI Codex plan limits ------------------------------------------------
+
+/** One Codex row in the widget, painted with the same helpers as Claude's. */
+function renderCodexRow(win, progressEl, pctEl, timerEl, timeTextEl, resetsAtEl,
+                        isWeekly, fallbackMinutes, timeFormat, weeklyDateFormat) {
+    const resetsAt = win && win.resetsAt ? win.resetsAt : null;
+    updateProgressBar(progressEl, pctEl, win ? win.usedPercent : 0);
+    updateTimer(timerEl, timeTextEl, resetsAt, (win && win.windowMinutes) || fallbackMinutes);
+    resetsAtEl.textContent = formatResetsAt(resetsAt, isWeekly, timeFormat, weeklyDateFormat);
+    resetsAtEl.style.opacity = resetsAt ? '1' : '0.4';
+}
+
+/** One half of the split Codex row in compact mode. */
+function renderCompactCodex(fillEl, pctEl, win, tag, fillClass) {
+    const pct = win ? win.usedPercent : 0;
+    fillEl.style.width = `${pct}%`;
+    pctEl.textContent = `${tag} ${Math.round(pct)}%`;
+    fillEl.className = 'compact-bar-fill ' + fillClass;
+    if (pct >= dangerThreshold) fillEl.classList.add('danger');
+    else if (pct >= warnThreshold) fillEl.classList.add('warning');
+}
+
+/**
+ * Paint the Codex rows in all three views from one main-process snapshot.
+ *
+ * Hidden outright when there is nothing to show — no Codex on this machine,
+ * or no turn recorded yet — rather than parked at 0%: the rule the Fable rows
+ * follow, and why a clone on a machine without Codex looks as it did before.
+ */
+function renderCodexUsage(usage) {
+    const visible = !!(usage && usage.available);
+    const changed = visible !== (latestCodexUsage !== null);
+    latestCodexUsage = visible ? usage : null;
+
+    elements.codexSection.style.display = visible ? '' : 'none';
+    elements.compactCodexRow.style.display = visible ? '' : 'none';
+    elements.barCodexGroup.style.display = visible ? '' : 'none';
+    // The docked strip's narrow tiers budget for the group only while it is up.
+    document.body.classList.toggle('has-codex', visible);
+
+    if (changed) {
+        // Both window heights are sums of fixed sections, so a section coming
+        // or going has to be told to whichever layout is live. Either call
+        // no-ops while docked.
+        if (isCompactMode) window.electronAPI.setCompactMode(true);
+        else resizeWidget();
+    }
+    if (!visible) return;
+
+    const settings = window._cachedSettings || {};
+    const timeFormat = settings.timeFormat || '12h';
+    const weeklyDateFormat = settings.weeklyDateFormat || 'date';
+
+    renderCodexRow(usage.session, elements.codexSessionProgress, elements.codexSessionPercentage,
+        elements.codexSessionTimer, elements.codexSessionTimeText, elements.codexSessionResetsAt,
+        false, 5 * 60, timeFormat, weeklyDateFormat);
+    renderCodexRow(usage.weekly, elements.codexWeeklyProgress, elements.codexWeeklyPercentage,
+        elements.codexWeeklyTimer, elements.codexWeeklyTimeText, elements.codexWeeklyResetsAt,
+        true, 7 * 24 * 60, timeFormat, weeklyDateFormat);
+
+    renderCompactCodex(elements.compactCodexSessionFill, elements.compactCodexSessionPct,
+        usage.session, '5h', 'codex');
+    renderCompactCodex(elements.compactCodexWeeklyFill, elements.compactCodexWeeklyPct,
+        usage.weekly, 'Wk', 'codex-weekly');
+
+    renderBarItem(elements.barCodexSessionFill, elements.barCodexSessionPct,
+        usage.session ? usage.session.usedPercent : null);
+    renderBarItem(elements.barCodexWeeklyFill, elements.barCodexWeeklyPct,
+        usage.weekly ? usage.weekly.usedPercent : null);
+
+    // The numbers are only as fresh as the last Codex turn on this machine,
+    // which nothing else on screen can say, so every view's tooltip does.
+    const plan = usage.plan ? ` (${usage.plan[0].toUpperCase()}${usage.plan.slice(1)} plan)` : '';
+    const asOf = usage.capturedAt
+        ? formatResetsAt(usage.capturedAt, true, timeFormat, 'date-day-time')
+        : 'unknown';
+    const lines = [
+        'OpenAI Codex' + plan,
+        'As of the last Codex turn on this PC: ' + asOf,
+        'Use on other devices appears after the next turn here.',
+    ];
+    if (usage.error) lines.push('(' + usage.error + ')');
+    const tooltip = lines.join('\n');
+    elements.codexSection.title = tooltip;
+    elements.compactCodexRow.title = tooltip;
+    elements.barCodexGroup.title = tooltip;
+}
+
+async function refreshCodexUsage() {
+    try {
+        renderCodexUsage(await window.electronAPI.getCodexUsage());
+    } catch (err) {
+        console.warn('Codex usage unavailable:', err);
+    }
+}
+
+/**
+ * Runs for the app's lifetime. main.js owns the file reads and answers from
+ * cache; the poll here also keeps the countdown text moving.
+ */
+function startCodexPolling() {
+    if (codexTimer) return;
+    refreshCodexUsage();
+    codexTimer = setInterval(refreshCodexUsage, CODEX_INTERVAL);
+}
+
 const EXPAND_OVERHEAD = 28; // margin-top(12) + padding-top(6) + bottom buffer(10)
 
 function resizeWidget() {
@@ -1202,8 +1342,9 @@ function resizeWidget() {
     const graphOffset = graphVisible ? GRAPH_HEIGHT : 0;
     const sysmonOffset = SYSMON_HEIGHT; // always shown
     const statusOffset = STATUS_HEIGHT; // always shown, one fixed row
+    const codexOffset = latestCodexUsage ? CODEX_HEIGHT : 0; // only with Codex usage
     const totalHeight = WIDGET_HEIGHT_COLLAPSED + expandedOffset + graphOffset
-        + sysmonOffset + statusOffset;
+        + sysmonOffset + statusOffset + codexOffset;
     window.electronAPI.resizeWindow(totalHeight);
 }
 

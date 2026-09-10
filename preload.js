@@ -78,6 +78,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServiceStatus: () => ipcRenderer.invoke('get-service-status'),
   toggleStatusPanel: (payload) => ipcRenderer.invoke('toggle-status-panel', payload),
 
+  // OpenAI Codex plan limits, read from Codex's local session logs
+  getCodexUsage: () => ipcRenderer.invoke('get-codex-usage'),
+
   // Bar mode (Windows appbar docking)
   setBarMode: (enabled, edge) => ipcRenderer.invoke('set-bar-mode', { enabled, edge }),
   getBarMode: () => ipcRenderer.invoke('get-bar-mode'),

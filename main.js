@@ -5,6 +5,7 @@ const { fetchViaWindow, fetchMultipleViaWindow } = require('./src/fetch-via-wind
 const { normalizeUsageLimits } = require('./src/normalize-usage-limits');
 const systemStats = require('./src/system-stats');
 const serviceStatus = require('./src/service-status');
+const codexUsage = require('./src/codex-usage');
 const statusPanel = require('./src/status-panel');
 const { fadeWindow } = require('./src/window-fade');
 const appbar = require('./src/appbar');
@@ -139,6 +140,9 @@ function getCompactHeight() {
   const data = store.get('latestUsageData');
   let height = COMPACT_HEIGHT + COMPACT_SYSMON_HEIGHT;
   if (data?.seven_day_fable) height += COMPACT_ROW_HEIGHT;
+  // Codex's two windows share one split row; shown only when there is Codex
+  // usage on this machine, which the renderer decides from the same sample.
+  if (codexUsage.getUsage().available) height += COMPACT_ROW_HEIGHT;
   return height;
 }
 const CHART_DAYS = 7;
@@ -1221,6 +1225,10 @@ ipcMain.handle('get-system-stats', () => systemStats.getStats());
 // a cached snapshot, so this is as cheap as the system-stats read above.
 ipcMain.handle('get-service-status', () => serviceStatus.getStatus());
 
+// OpenAI Codex plan limits, parsed from Codex's local session logs. Also served
+// from a cached sample; see src/codex-usage.js for where the numbers come from.
+ipcMain.handle('get-codex-usage', () => codexUsage.getUsage());
+
 // The status indicator's click-toggled detail popup. The anchor rect arrives in
 // the widget's own CSS pixels; src/status-panel.js turns that into a screen
 // position. Returns whether the panel ended up open.
@@ -1784,6 +1792,7 @@ app.whenReady().then(async () => {
 
   systemStats.start();
   serviceStatus.start();
+  codexUsage.start();
 
   migrateUsageHistoryKey();
   pruneStaleHistoryKeys();
@@ -1873,6 +1882,7 @@ app.on('before-quit', () => {
   isQuitting = true;
   systemStats.stop();
   serviceStatus.stop();
+  codexUsage.stop();
   trayFlyout.stop();
   // An orphaned popup would keep the process alive past the last real window.
   statusPanel.close();

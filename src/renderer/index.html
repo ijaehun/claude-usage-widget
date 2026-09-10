@@ -184,6 +184,51 @@
                     <div id="extraRows"></div>
                 </div>
 
+                <!-- OpenAI Codex plan limits, read from Codex's own session logs
+                     (src/codex-usage.js). The same row markup as the Claude
+                     rows above, so the columns line up under one set of
+                     headers. Hidden outright when this machine has no Codex
+                     usage to show — the Fable rule — so a clone on a machine
+                     without Codex looks exactly as it did before. -->
+                <div class="codex-section" id="codexSection" style="display: none;">
+                    <div class="usage-section">
+                        <span class="usage-label">Codex Session</span>
+                        <div class="usage-bar-group">
+                            <div class="progress-bar">
+                                <div class="progress-fill codex" id="codexSessionProgress" style="width: 0%"></div>
+                            </div>
+                            <span class="usage-percentage" id="codexSessionPercentage">0%</span>
+                        </div>
+                        <div class="usage-elapsed-group">
+                            <svg class="mini-timer" width="24" height="24" viewBox="0 0 24 24">
+                                <circle class="timer-bg" cx="12" cy="12" r="10" />
+                                <circle class="timer-progress codex" id="codexSessionTimer" cx="12" cy="12" r="10"
+                                    style="stroke-dasharray: 63; stroke-dashoffset: 63" />
+                            </svg>
+                        </div>
+                        <div class="timer-text" id="codexSessionTimeText">--:--</div>
+                        <div class="resets-at-text" id="codexSessionResetsAt">--</div>
+                    </div>
+                    <div class="usage-section">
+                        <span class="usage-label">Codex Weekly</span>
+                        <div class="usage-bar-group">
+                            <div class="progress-bar">
+                                <div class="progress-fill codex-weekly" id="codexWeeklyProgress" style="width: 0%"></div>
+                            </div>
+                            <span class="usage-percentage" id="codexWeeklyPercentage">0%</span>
+                        </div>
+                        <div class="usage-elapsed-group">
+                            <svg class="mini-timer" width="24" height="24" viewBox="0 0 24 24">
+                                <circle class="timer-bg" cx="12" cy="12" r="10" />
+                                <circle class="timer-progress codex" id="codexWeeklyTimer" cx="12" cy="12" r="10"
+                                    style="stroke-dasharray: 63; stroke-dashoffset: 63" />
+                            </svg>
+                        </div>
+                        <div class="timer-text" id="codexWeeklyTimeText">--:--</div>
+                        <div class="resets-at-text" id="codexWeeklyResetsAt">--</div>
+                    </div>
+                </div>
+
                 <!-- Claude service health (status.claude.com). Deliberately one
                      fixed-height row: resizeWidget() sums fixed section
                      heights, so letting an incident title wrap would leave the
@@ -273,6 +318,21 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Codex: both windows share one row, split, so compact
+                         grows by a single COMPACT_ROW_HEIGHT rather than two. -->
+                    <div class="compact-row" id="compactCodexRow" style="display: none;">
+                        <span class="compact-label">Codex</span>
+                        <div class="compact-bar-wrap compact-bar-split">
+                            <div class="compact-bar-bg">
+                                <div class="compact-bar-fill codex" id="compactCodexSessionFill" style="width: 0%"></div>
+                                <span class="compact-pct" id="compactCodexSessionPct">5h 0%</span>
+                            </div>
+                            <div class="compact-bar-bg">
+                                <div class="compact-bar-fill codex-weekly" id="compactCodexWeeklyFill" style="width: 0%"></div>
+                                <span class="compact-pct" id="compactCodexWeeklyPct">Wk 0%</span>
+                            </div>
+                        </div>
+                    </div>
     <!-- Local machine stats — always on in compact mode, since a small
                          always-visible widget is exactly where these matter most. -->
                     <div class="compact-sysmon" id="compactSysmon">
@@ -328,6 +388,26 @@
                     <span class="bar-item bar-reset">
                         <span class="bar-key">Resets</span>
                         <span class="bar-val" id="barResetsIn">--:--</span>
+                    </span>
+                </div>
+
+                <!-- OpenAI Codex plan limits. A group of its own rather than
+                     more items in the Claude group, so it can carry its own
+                     name — "5h" beside the Claude brand would read as Claude's.
+                     Hidden when this machine has no Codex usage. It spends
+                     width the strip barely has: see the has-codex rules at
+                     the narrow tiers in styles.css. -->
+                <div class="bar-group bar-group-codex" id="barCodexGroup" style="display: none;">
+                    <span class="bar-brand bar-brand-codex">Codex</span>
+                    <span class="bar-item">
+                        <span class="bar-key">5h</span>
+                        <span class="bar-meter"><span class="bar-fill codex" id="barCodexSessionFill" style="width:0%"></span></span>
+                        <span class="bar-val" id="barCodexSessionPct">--</span>
+                    </span>
+                    <span class="bar-item">
+                        <span class="bar-key">Wk</span>
+                        <span class="bar-meter"><span class="bar-fill codex-weekly" id="barCodexWeeklyFill" style="width:0%"></span></span>
+                        <span class="bar-val" id="barCodexWeeklyPct">--</span>
                     </span>
                 </div>
 
