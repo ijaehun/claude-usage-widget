@@ -596,6 +596,10 @@
 
                     <div class="settings-footer">
                         <span class="settings-version-label" id="settingsVersionLabel">v1.5.0</span>
+                        <!-- Connects a ChatGPT account so Codex limits show on
+                             a PC without Codex. Hidden when Codex's own token
+                             already serves them. See src/chatgpt-usage.js. -->
+                        <button class="chatgpt-btn" id="chatgptBtn" style="display: none;">Connect ChatGPT</button>
                         <button class="logout-btn" id="logoutBtn">Log Out</button>
                     </div>
                 </div>

@@ -1226,6 +1226,31 @@ body.theme-light .settings-disclaimer {
     border-color: rgba(239, 68, 68, 0.7);
 }
 
+/* Connect-ChatGPT, beside Log Out. Neutral until connected, green while a
+   connected account is serving the Codex rows, amber once it has lapsed. */
+.chatgpt-btn {
+    background: transparent;
+    color: #c0c0c8;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.chatgpt-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.chatgpt-btn.connected { color: #34d399; border-color: rgba(52, 211, 153, 0.45); }
+.chatgpt-btn.expired { color: #fbbf24; border-color: rgba(251, 191, 36, 0.5); }
+.chatgpt-btn:disabled { opacity: 0.6; cursor: default; }
+
+body.theme-light .chatgpt-btn { color: #505060; border-color: rgba(0, 0, 0, 0.18); }
+body.theme-light .chatgpt-btn:hover { background: rgba(0, 0, 0, 0.05); }
+body.theme-light .chatgpt-btn.connected { color: #059669; border-color: rgba(5, 150, 105, 0.45); }
+body.theme-light .chatgpt-btn.expired { color: #b45309; border-color: rgba(180, 83, 9, 0.5); }
+
 .coffee-btn {
     background: rgba(255, 193, 7, 0.12);
     color: #fbbf24;

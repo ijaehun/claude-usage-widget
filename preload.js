@@ -80,6 +80,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // OpenAI Codex plan limits, read from Codex's local session logs
   getCodexUsage: () => ipcRenderer.invoke('get-codex-usage'),
+  // Connecting a ChatGPT account (for machines without Codex)
+  getChatGPTState: () => ipcRenderer.invoke('chatgpt-get-state'),
+  connectChatGPT: () => ipcRenderer.invoke('chatgpt-connect'),
+  disconnectChatGPT: () => ipcRenderer.invoke('chatgpt-disconnect'),
+  onCodexRefresh: (callback) => { ipcRenderer.on('codex-refresh', () => callback()); },
 
   // Bar mode (Windows appbar docking)
   setBarMode: (enabled, edge) => ipcRenderer.invoke('set-bar-mode', { enabled, edge }),

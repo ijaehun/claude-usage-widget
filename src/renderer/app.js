@@ -113,6 +113,7 @@ const elements = {
     settingsOverlay: document.getElementById('settingsOverlay'),
     closeSettingsBtn: document.getElementById('closeSettingsBtn'),
     logoutBtn: document.getElementById('logoutBtn'),
+    chatgptBtn: document.getElementById('chatgptBtn'),
 
     sysmonSection: document.getElementById('sysmonSection'),
     cpuLabel: document.getElementById('cpuLabel'),
@@ -331,6 +332,8 @@ async function init() {
     startSysmonPolling();
     startServiceStatusPolling();
     startCodexPolling();
+    // The manual ChatGPT connect window nudges the rows the moment a token lands.
+    window.electronAPI.onCodexRefresh(() => refreshCodexUsage());
 
     // Reflect docking that is already in effect (e.g. after a renderer reload),
     // and disable the control outright where the platform cannot support it.
@@ -493,6 +496,22 @@ function setupEventListeners() {
         credentials = { sessionKey: null, organizationId: null };
         elements.settingsOverlay.style.display = 'none';
         showLoginRequired();
+    });
+
+    // Connect / disconnect a ChatGPT account. Only shown when Codex's own
+    // token is not already serving the Codex rows (renderChatGPTButton).
+    elements.chatgptBtn.addEventListener('click', async () => {
+        const state = await window.electronAPI.getChatGPTState();
+        if (state.connected && !state.connectExpired) {
+            if (!window.confirm('Disconnect ChatGPT?\n\nThe Codex rows will hide unless Codex is signed in on this PC.')) return;
+            renderChatGPTButton(await window.electronAPI.disconnectChatGPT());
+        } else {
+            // Opens the real browser to sign in; resolves when the loopback
+            // callback lands (or it times out). Show progress meanwhile.
+            renderChatGPTButton({ codexToken: false, connecting: true });
+            renderChatGPTButton(await window.electronAPI.connectChatGPT());
+        }
+        refreshCodexUsage();
     });
 
     // Theme buttons
@@ -1254,6 +1273,9 @@ function renderCompactCodex(fillEl, pctEl, win, tag, fillClass) {
  * follow, and why a clone on a machine without Codex looks as it did before.
  */
 function renderCodexUsage(usage) {
+    // Keep the Settings button in step with the account state every poll.
+    if (usage && usage.account) renderChatGPTButton(usage.account);
+
     const visible = !!(usage && usage.available);
     const changed = visible !== (latestCodexUsage !== null);
     latestCodexUsage = visible ? usage : null;
@@ -1302,15 +1324,18 @@ function renderCodexUsage(usage) {
         : 'unknown';
     const lines = ['OpenAI Codex' + plan];
     if (usage.source === 'chatgpt') {
-        lines.push('Live from chatgpt.com, checked ' + asOf);
+        const via = (usage.account && usage.account.source === 'account')
+            ? 'via your connected ChatGPT account'
+            : 'via the Codex sign-in on this PC';
+        lines.push('Live from chatgpt.com (' + via + '), checked ' + asOf);
         lines.push('Includes use on other devices and the web.');
     } else {
         lines.push('As of the last Codex turn on this PC: ' + asOf);
         const account = usage.account || {};
-        if (account.tokenExpired) {
-            lines.push('Codex sign-in expired — run Codex to refresh live totals.');
-        } else {
-            lines.push('Live totals appear once Codex is signed in on this PC.');
+        if (account.connectExpired) {
+            lines.push('ChatGPT sign-in expired — reconnect in Settings.');
+        } else if (!account.codexToken && !account.connected) {
+            lines.push('Connect ChatGPT in Settings to include other devices.');
         }
     }
     if (usage.error) lines.push('(' + usage.error + ')');
@@ -1318,6 +1343,32 @@ function renderCodexUsage(usage) {
     elements.codexSection.title = tooltip;
     elements.compactCodexRow.title = tooltip;
     elements.barCodexGroup.title = tooltip;
+}
+
+/**
+ * The Settings-footer ChatGPT button. Hidden entirely when Codex's own token
+ * already serves the rows — there is nothing to connect. Otherwise it offers
+ * to connect, reconnect (session lapsed), or disconnect (currently connected).
+ */
+function renderChatGPTButton(state) {
+    const btn = elements.chatgptBtn;
+    if (!btn || !state) return;
+    // Codex token covers it: no account to manage here.
+    if (state.codexToken) { btn.style.display = 'none'; return; }
+    btn.style.display = '';
+    const live = state.connected && !state.connectExpired;
+    btn.disabled = !!state.connecting;
+    btn.classList.toggle('connected', live);
+    btn.classList.toggle('expired', state.connected && state.connectExpired);
+    if (state.connecting) btn.textContent = 'Connecting…';
+    else if (live) btn.textContent = 'ChatGPT connected';
+    else if (state.connected && state.connectExpired) btn.textContent = 'Reconnect ChatGPT';
+    else btn.textContent = 'Connect ChatGPT';
+    btn.title = live
+        ? 'Codex limits come live from your ChatGPT account. Click to disconnect.'
+        : (state.connected && state.connectExpired)
+            ? 'The ChatGPT sign-in expired. Click to sign in again.'
+            : 'Sign in to ChatGPT in your browser so Codex limits show here without running Codex.';
 }
 
 async function refreshCodexUsage() {

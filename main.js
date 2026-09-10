@@ -1230,6 +1230,43 @@ ipcMain.handle('get-service-status', () => serviceStatus.getStatus());
 // from a cached sample; see src/codex-usage.js for where the numbers come from.
 ipcMain.handle('get-codex-usage', () => codexUsage.getUsage());
 
+// Connecting a ChatGPT account, for people without Codex. The sign-in happens
+// in the user's real browser via an OAuth loopback (see src/chatgpt-usage.js);
+// all we persist is the resulting refresh token, encrypted like the claude.ai
+// sessionKey. The access token is minted from it in memory.
+function saveChatgptRefresh(rt) {
+  if (rt === null) { store.delete('chatgptRefresh_encrypted'); store.delete('chatgptRefresh'); return; }
+  if (safeStorage.isEncryptionAvailable()) {
+    store.set('chatgptRefresh_encrypted', safeStorage.encryptString(rt).toString('base64'));
+    store.delete('chatgptRefresh');
+  } else {
+    store.set('chatgptRefresh', rt);
+  }
+}
+function loadChatgptRefresh() {
+  if (safeStorage.isEncryptionAvailable()) {
+    const enc = store.get('chatgptRefresh_encrypted');
+    if (enc) {
+      try { return safeStorage.decryptString(Buffer.from(enc, 'base64')); }
+      catch (err) { console.error('[ChatGPT] refresh-token decrypt failed:', err.message); }
+    }
+    return null;
+  }
+  return store.get('chatgptRefresh') || null;
+}
+
+ipcMain.handle('chatgpt-get-state', () => chatgptUsage.getState());
+
+// Opens the real browser and waits for the loopback callback; may take a while
+// while the user signs in. Nudges the Codex rows once a token set lands.
+ipcMain.handle('chatgpt-connect', async () => {
+  const state = await chatgptUsage.connect(shell.openExternal);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('codex-refresh');
+  return state;
+});
+
+ipcMain.handle('chatgpt-disconnect', () => chatgptUsage.disconnect());
+
 // The status indicator's click-toggled detail popup. The anchor rect arrives in
 // the widget's own CSS pixels; src/status-panel.js turns that into a screen
 // position. Returns whether the panel ended up open.
@@ -1794,7 +1831,7 @@ app.whenReady().then(async () => {
   systemStats.start();
   serviceStatus.start();
   codexUsage.start();
-  chatgptUsage.start();
+  chatgptUsage.start({ refreshToken: loadChatgptRefresh(), onRefreshToken: saveChatgptRefresh });
 
   migrateUsageHistoryKey();
   pruneStaleHistoryKeys();
