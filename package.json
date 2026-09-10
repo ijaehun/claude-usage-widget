@@ -62,7 +62,9 @@
     "files": [
       "**/*",
       "!**/*.ts",
-      "!*.md"
+      "!*.md",
+      "!.claude",
+      "!.claude/**/*"
     ],
     "mac": {
       "target": [
