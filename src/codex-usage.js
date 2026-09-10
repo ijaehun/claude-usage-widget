@@ -6,10 +6,15 @@
  * OpenAI Codex plan limits — the 5-hour and weekly windows — for the widget's
  * Codex rows, so both coding agents' quotas are visible in one place.
  *
- * Read from Codex's own session logs rather than any network API. Every Codex
- * turn, CLI or desktop app, appends a `token_count` event to that thread's
- * rollout file under ~/.codex/sessions, and the event carries the rate-limit
- * snapshot the server returned with the response:
+ * Two sources, and whichever snapshot is newer wins:
+ *
+ * 1. chatgpt.com live, using the token Codex already stores on this PC
+ *    (src/chatgpt-usage.js) — no sign-in of our own. Includes use on other
+ *    devices and the web.
+ * 2. Codex's own session logs on this PC, which need no sign-in either. Every
+ *    Codex turn, CLI or desktop app, appends a `token_count` event to that
+ *    thread's rollout file under ~/.codex/sessions, carrying the rate-limit
+ *    snapshot the server returned with the response:
  *
  *   {"timestamp":"…","type":"event_msg","payload":{"type":"token_count",
  *    "info":{…},"rate_limits":{"limit_id":"codex",
@@ -17,26 +22,30 @@
  *    "secondary":{"used_percent":9.0,"window_minutes":10080,"resets_at":…},
  *    "plan_type":"plus",…}}}
  *
- * So nothing here touches Codex's credentials (auth.json), and none of the
- * Cloudflare trouble in fetch-via-window.js applies.
+ *    Nothing here touches Codex's credentials (auth.json). The price is
+ *    freshness: the numbers are as of the last Codex turn on THIS machine.
  *
- * The price is freshness: the numbers are as of the last Codex turn on THIS
- * machine. Usage from another computer or the web does not appear until a turn
- * runs here. What can be done honestly is to age each window out at its own
- * resets_at — past that point the old percentage describes a window that no
- * longer exists, so it is reported as reset. There is deliberately no
- * wall-clock staleness rule like service-status.js has: a snapshot from three
- * hours ago is still exactly right if nothing has been used since.
+ * Both are snapshots of the same limits, so "newest wins" is safe: a Codex
+ * turn here between two chatgpt.com polls beats the older poll, and a poll
+ * beats a turn from before it — which is how use elsewhere shows up. (Should
+ * Codex and the widget be signed in to different accounts, the rows would
+ * alternate between them. Not guarded against.)
  *
- * The format is Codex's internal log, not a published interface, so it can
- * change under us the way claude.ai's usage endpoint did. Anything that does
- * not parse is reported as unavailable and the rows hide; nothing here throws
- * into the main process.
+ * Each window is aged out at its own resets_at — past that point the old
+ * percentage describes a window that no longer exists, so it is reported as
+ * reset. There is deliberately no wall-clock staleness rule like
+ * service-status.js has: a snapshot from three hours ago is still exactly
+ * right if nothing has been used since.
+ *
+ * Neither format is a published interface, so either can change under us the
+ * way claude.ai's usage endpoint did. Anything that does not parse is reported
+ * as unavailable and the rows hide; nothing here throws into the main process.
  */
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const chatgptUsage = require('./chatgpt-usage');
 
 // A turn writes its event as the response lands, so this is the lag between
 // using Codex and the widget moving. A tick with nothing new is a few stats.
@@ -225,13 +234,12 @@ function toWindow(raw, eventAt) {
   };
 }
 
-function toSample(event, file) {
-  const limits = event.limits;
-  const primary = toWindow(limits.primary, event.at);
-  const secondary = toWindow(limits.secondary, event.at);
-
-  // Codex sends the short window as primary. The rows are labelled by length,
-  // though, so where the lengths say otherwise the lengths win.
+/**
+ * Session and weekly from the two windows either source reports. Both send
+ * the short window as primary; the rows are labelled by length, though, so
+ * where the lengths say otherwise the lengths win.
+ */
+function classify(primary, secondary) {
   let session = primary;
   let weekly = secondary;
   if (primary && secondary && primary.windowMinutes > secondary.windowMinutes) {
@@ -245,6 +253,15 @@ function toSample(event, file) {
     session = secondary;
     weekly = null;
   }
+  return { session, weekly };
+}
+
+function toSample(event, file) {
+  const limits = event.limits;
+  const { session, weekly } = classify(
+    toWindow(limits.primary, event.at),
+    toWindow(limits.secondary, event.at)
+  );
   if (!session && !weekly) return null;
 
   return {
@@ -355,9 +372,8 @@ function stop() {
 
 function currentWindow(w, now) {
   if (!w) return null;
-  // The window this percentage belonged to has rolled over since the turn that
-  // reported it, and the next one has not been used yet — or it would have
-  // written a newer event.
+  // The window this percentage belonged to has rolled over since the snapshot,
+  // and the next one has not been used yet — or a newer snapshot would say so.
   if (w.resetsAt !== null && w.resetsAt <= now) {
     return { usedPercent: 0, windowMinutes: w.windowMinutes, resetsAt: null, reset: true };
   }
@@ -365,26 +381,43 @@ function currentWindow(w, now) {
 }
 
 /**
- * Current Codex limits. Cheap — served from the cached sample, so the renderer
+ * Current Codex limits. Cheap — served from cached samples, so the renderer
  * can poll it as often as it likes. `available: false` means there is nothing
- * to show, and the rows should hide.
+ * to show, and the rows should hide. `source` is 'chatgpt' or 'local'.
  */
 function getUsage() {
-  if (!sample) {
+  const account = chatgptUsage.getState();
+  const server = chatgptUsage.getSample();
+
+  let chosen = null;
+  if (server && (!sample || server.at >= (sample.at || 0))) {
+    const { session, weekly } = classify(server.primary, server.secondary);
+    if (session || weekly) {
+      chosen = { source: 'chatgpt', at: server.at, plan: server.plan, session, weekly, error: account.error };
+    }
+  }
+  if (!chosen && sample) {
+    chosen = { source: 'local', at: sample.at, plan: sample.plan, session: sample.session, weekly: sample.weekly, error: lastError };
+  }
+
+  if (!chosen) {
     return {
       available: false,
       reason: lastError || (homeFound ? 'no Codex usage recorded yet' : 'Codex not found'),
+      account,
     };
   }
   const now = Date.now();
   return {
     available: true,
-    capturedAt: sample.at,
-    plan: sample.plan,
-    session: currentWindow(sample.session, now),
-    weekly: currentWindow(sample.weekly, now),
-    // Non-null means a later poll failed; the sample shown is still valid.
-    error: lastError,
+    source: chosen.source,
+    capturedAt: chosen.at,
+    plan: chosen.plan,
+    session: currentWindow(chosen.session, now),
+    weekly: currentWindow(chosen.weekly, now),
+    // Non-null means a later attempt failed; the snapshot shown is still valid.
+    error: chosen.error,
+    account,
   };
 }
 

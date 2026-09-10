@@ -6,6 +6,7 @@ const { normalizeUsageLimits } = require('./src/normalize-usage-limits');
 const systemStats = require('./src/system-stats');
 const serviceStatus = require('./src/service-status');
 const codexUsage = require('./src/codex-usage');
+const chatgptUsage = require('./src/chatgpt-usage');
 const statusPanel = require('./src/status-panel');
 const { fadeWindow } = require('./src/window-fade');
 const appbar = require('./src/appbar');
@@ -1793,6 +1794,7 @@ app.whenReady().then(async () => {
   systemStats.start();
   serviceStatus.start();
   codexUsage.start();
+  chatgptUsage.start();
 
   migrateUsageHistoryKey();
   pruneStaleHistoryKeys();
@@ -1883,6 +1885,7 @@ app.on('before-quit', () => {
   systemStats.stop();
   serviceStatus.stop();
   codexUsage.stop();
+  chatgptUsage.stop();
   trayFlyout.stop();
   // An orphaned popup would keep the process alive past the last real window.
   statusPanel.close();

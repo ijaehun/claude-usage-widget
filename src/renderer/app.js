@@ -1300,11 +1300,19 @@ function renderCodexUsage(usage) {
     const asOf = usage.capturedAt
         ? formatResetsAt(usage.capturedAt, true, timeFormat, 'date-day-time')
         : 'unknown';
-    const lines = [
-        'OpenAI Codex' + plan,
-        'As of the last Codex turn on this PC: ' + asOf,
-        'Use on other devices appears after the next turn here.',
-    ];
+    const lines = ['OpenAI Codex' + plan];
+    if (usage.source === 'chatgpt') {
+        lines.push('Live from chatgpt.com, checked ' + asOf);
+        lines.push('Includes use on other devices and the web.');
+    } else {
+        lines.push('As of the last Codex turn on this PC: ' + asOf);
+        const account = usage.account || {};
+        if (account.tokenExpired) {
+            lines.push('Codex sign-in expired — run Codex to refresh live totals.');
+        } else {
+            lines.push('Live totals appear once Codex is signed in on this PC.');
+        }
+    }
     if (usage.error) lines.push('(' + usage.error + ')');
     const tooltip = lines.join('\n');
     elements.codexSection.title = tooltip;
@@ -2244,6 +2252,7 @@ async function loadSettings() {
     if (credentials.organizations && credentials.organizations.length > 0) {
         populateOrgSelector(credentials.organizations, credentials.organizationId);
     }
+
 
     warnThreshold = settings.warnThreshold;
     dangerThreshold = settings.dangerThreshold;

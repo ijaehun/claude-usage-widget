@@ -2,6 +2,8 @@
 
 A beautiful, standalone desktop widget for **Windows, macOS, and Linux** that displays your Claude.ai usage statistics in real-time.
 
+> 🇰🇷 **한국어 설치 안내는 [여기](#한국어-설치-안내)** · [설치 파일 바로 받기](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-Setup.exe)
+
 ![Claude Usage Widget - Main](assets/screenshot-main.png)
 
 ---
@@ -48,6 +50,58 @@ A beautiful, standalone desktop widget for **Windows, macOS, and Linux** that di
 - 🕐 **Time format** — 12h or 24h
 - 📅 **Date format** — Controls how the weekly reset date is displayed
 - 📐 **Compact mode** — Minimal view
+
+---
+
+## 한국어 설치 안내
+
+Windows 전용 개인 빌드예요. Claude 사용량에 더해 **Codex 사용량**, **시스템 모니터**(CPU·GPU·RAM), **Claude 서비스 상태**, **화면 가장자리 도킹**이 들어 있어요.
+
+### 설치
+
+1. **[설치 파일 받기](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-Setup.exe)**
+   (설치 없이 쓰려면 **[포터블 버전](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-portable.exe)**)
+2. 받은 파일을 실행해요. **"Windows의 PC 보호"** 경고가 뜨면 **추가 정보 → 실행**을 누르세요. 코드 서명이 없어서 뜨는 정상적인 경고예요.
+3. 설치 후 위젯을 실행하고, 로그인 창에서 **본인 claude.ai 계정**으로 로그인하면 끝이에요. API 키는 필요 없어요.
+
+### 업데이트
+
+자동 업데이트는 없어요. 새 버전이 나오면 **위젯을 종료한 뒤** 위 링크에서 설치 파일을 다시 받아 설치하세요. 기존 설치를 덮어쓰고, 로그인과 설정은 그대로 유지돼요.
+
+### Codex 사용량
+
+- PC에 **Codex(CLI 또는 앱)가 로그인돼 있으면 자동으로 표시**돼요. 위젯에서 따로 로그인할 필요가 없어요. Codex가 저장해 둔 인증을 그대로 재사용하기 때문이에요.
+- 로그인돼 있으면 chatgpt.com에서 **실시간**으로 받아와서, **다른 PC나 웹에서 쓴 양도 함께** 반영돼요.
+- Codex 로그인이 만료됐으면 Codex가 PC에 남긴 기록 파일로 대체돼요(이 PC에서 마지막으로 쓴 시점 기준). Codex를 한 번 더 실행하면 다시 실시간으로 돌아와요.
+- Codex를 쓰지 않는 PC에서는 Codex 줄이 나타나지 않아요.
+
+### 설정 팁
+
+톱니바퀴(⚙️) 설정에서 바꿀 수 있어요.
+
+| 설정 | 설명 |
+| --- | --- |
+| Launch at startup | 윈도우 시작 시 자동 실행 |
+| Dock to screen edge | 화면 아래 가장자리에 얇은 바로 고정 |
+| Hide from taskbar | 작업표시줄에서 숨기기 |
+| Always on top | 항상 다른 창 위에 표시 |
+| Show tray stats | 알림 영역에 트레이 아이콘 표시 |
+
+- **도킹을 켤 때는 `Show tray stats`도 켜두는 걸 추천해요.** 트레이 아이콘이 없으면 바 오른쪽 끝 버튼이 도킹을 푸는 유일한 방법인데, 폭이 좁은 모니터에서는 이 버튼이 잘릴 수 있어요.
+- GPU·VRAM·온도는 **NVIDIA 그래픽카드**에서만 표시돼요.
+
+### 소스에서 직접 빌드 (선택)
+
+[Git](https://git-scm.com)과 [Node.js](https://nodejs.org)(LTS)가 필요해요. **Dropbox·OneDrive 같은 동기화 폴더 밖**에서 진행하세요. 안에서 하면 빌드가 실패해요.
+
+```bash
+git clone https://github.com/ijaehun/claude-usage-widget.git
+cd claude-usage-widget
+npm ci
+npm run build:win
+```
+
+`dist\` 폴더에 설치 파일이 만들어져요. 빌드 없이 바로 실행만 해보려면 `npm start`를 쓰세요.
 
 ---
 
