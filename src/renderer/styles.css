@@ -2255,16 +2255,18 @@ body.bar-mode .compact-content {
 }
 
 /* Narrow strips: a rotated secondary monitor at 125% leaves roughly 1150 CSS
-   px, well under the ~1220 the full-size layout wants. Scoped to bar mode so
-   the 560px widget window never matches these. Numbers are tuned against the
-   measured natural width, not guessed. */
-@media (max-width: 1300px) {
+   px, well under the ~1310 the full-size layout wants. Scoped to bar mode so
+   the 560px widget window never matches these. Each breakpoint sits just above
+   the widest the next-wider tier can get (Fable present, "3 services", both
+   countdowns "Not started"), so no width falls between two tiers and clips.
+   1150 is pinned: 1151 is the portrait monitor, and it fits the 1320 tier. */
+@media (max-width: 1320px) {
     body.bar-mode .bar-content { padding: 0 8px; gap: 6px; }
     body.bar-mode .bar-group { gap: 9px; }
     body.bar-mode .bar-meter { width: 40px; }
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1150px) {
     body.bar-mode .bar-brand { display: none; }
     body.bar-mode .bar-group { gap: 7px; }
     body.bar-mode .bar-meter { width: 32px; }
@@ -2272,10 +2274,12 @@ body.bar-mode .compact-content {
 
 /* Last resort. The system fills stay colour-coded (blue/green/amber/pink), so
    dropping their labels keeps them readable where the text no longer fits. */
-@media (max-width: 900px) {
+@media (max-width: 1040px) {
     body.bar-mode .bar-group-system .bar-key { display: none; }
     body.bar-mode .bar-group-system .bar-item { gap: 4px; }
     body.bar-mode .bar-val { min-width: 26px; }
+    /* Buys the last ~12px, so a 1080p portrait monitor at 125% (864px) fits. */
+    body.bar-mode .bar-content { padding: 0 6px; gap: 4px; }
 }
 
 /* With the Codex group up, the strip carries roughly 250px more than the tiers
@@ -2286,11 +2290,11 @@ body.bar-mode .compact-content {
    groups drops to a short spelling ("Ses 42% Wk 31% Rst 1h 57m"), so the two
    groups stay in the same shape. Measured, not estimated — re-run the harness
    after touching these.
-   The first tier starts well above the base 1300: with Session/Weekly/Resets
+   The first tier starts well above the base 1320: with Session/Weekly/Resets
    spelled out the full-size strip wants up to ~1765px, which a 1920 laptop at
    125% (1536px) cannot give. Between the two it borrows the base tier's
-   spacing, bounded below so the 1080 tier's tighter gap still wins there. */
-@media (min-width: 1301px) and (max-width: 1800px) {
+   spacing, bounded below so the 1150 tier's tighter gap still wins there. */
+@media (min-width: 1321px) and (max-width: 1800px) {
     body.bar-mode.has-codex .bar-content { padding: 0 8px; gap: 6px; }
     body.bar-mode.has-codex .bar-group { gap: 9px; }
 }
@@ -2312,18 +2316,18 @@ body.bar-mode .compact-content {
 /* Short keys alone net out to nothing on the 1151px monitor — Claude's keys
    shrink by about what Codex's reappearing keys cost — so the meters and
    value columns shrink here too. */
-@media (max-width: 1300px) {
+@media (max-width: 1320px) {
     body.bar-mode.has-codex .bar-meter { width: 24px; }
     body.bar-mode.has-codex .bar-val { min-width: 26px; }
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1150px) {
     body.bar-mode.has-codex .bar-brand.bar-brand-codex { display: inline; }
     body.bar-mode.has-codex .bar-group-system .bar-key { display: none; }
     body.bar-mode.has-codex .bar-group-system .bar-item { gap: 4px; }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1040px) {
     body.bar-mode.has-codex .bar-reset .bar-key { display: none; }
     body.bar-mode.has-codex .bar-meter { width: 18px; }
     body.bar-mode.has-codex .bar-group { gap: 5px; }
