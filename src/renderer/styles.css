@@ -2282,14 +2282,39 @@ body.bar-mode .compact-content {
    above were tuned for — on the 1151px portrait monitor that is 183px past the
    edge before any of this. So each tier gives up one step earlier. The Codex
    group keeps its name at every width, since bare numbers beside the Claude
-   meters would read as Claude's; its meters and keys go first, leaving
-   "Codex 69% 16%" in the same session-then-weekly order as the items beside
-   it. Measured, not estimated — re-run the harness after touching these. */
-@media (max-width: 1300px) {
+   meters would read as Claude's; its meters go first, and every key in both
+   groups drops to a short spelling ("Ses 42% Wk 31% Rst 1h 57m"), so the two
+   groups stay in the same shape. Measured, not estimated — re-run the harness
+   after touching these.
+   The first tier starts well above the base 1300: with Session/Weekly/Resets
+   spelled out the full-size strip wants up to ~1765px, which a 1920 laptop at
+   125% (1536px) cannot give. Between the two it borrows the base tier's
+   spacing, bounded below so the 1080 tier's tighter gap still wins there. */
+@media (min-width: 1301px) and (max-width: 1800px) {
+    body.bar-mode.has-codex .bar-content { padding: 0 8px; gap: 6px; }
+    body.bar-mode.has-codex .bar-group { gap: 9px; }
+}
+
+@media (max-width: 1800px) {
     body.bar-mode.has-codex .bar-group-claude .bar-brand { display: none; }
-    body.bar-mode.has-codex .bar-group-codex .bar-key,
     body.bar-mode.has-codex .bar-group-codex .bar-meter { display: none; }
     body.bar-mode.has-codex .bar-meter { width: 28px; }
+    /* Keys shrink to their data-short spelling rather than vanishing, in both
+       groups alike, so the Codex numbers still say which window they are. */
+    body.bar-mode.has-codex .bar-key[data-short] { font-size: 0; letter-spacing: 0; }
+    body.bar-mode.has-codex .bar-key[data-short]::after {
+        content: attr(data-short);
+        font-size: 11px;
+        letter-spacing: 0.3px;
+    }
+}
+
+/* Short keys alone net out to nothing on the 1151px monitor — Claude's keys
+   shrink by about what Codex's reappearing keys cost — so the meters and
+   value columns shrink here too. */
+@media (max-width: 1300px) {
+    body.bar-mode.has-codex .bar-meter { width: 24px; }
+    body.bar-mode.has-codex .bar-val { min-width: 26px; }
 }
 
 @media (max-width: 1080px) {
@@ -2300,7 +2325,9 @@ body.bar-mode .compact-content {
 
 @media (max-width: 900px) {
     body.bar-mode.has-codex .bar-reset .bar-key { display: none; }
-    body.bar-mode.has-codex .bar-meter { width: 24px; }
+    body.bar-mode.has-codex .bar-meter { width: 18px; }
+    body.bar-mode.has-codex .bar-group { gap: 5px; }
+    body.bar-mode.has-codex .bar-item { gap: 4px; }
 }
 
 /* Bar mode is a dark chrome element by design — it sits against the desktop

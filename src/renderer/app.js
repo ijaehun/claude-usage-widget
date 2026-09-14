@@ -162,6 +162,7 @@ const elements = {
     barCodexSessionPct: document.getElementById('barCodexSessionPct'),
     barCodexWeeklyFill: document.getElementById('barCodexWeeklyFill'),
     barCodexWeeklyPct: document.getElementById('barCodexWeeklyPct'),
+    barCodexResetsIn: document.getElementById('barCodexResetsIn'),
 
     compactSysmon: document.getElementById('compactSysmon'),
     compactCpuPct: document.getElementById('compactCpuPct'),
@@ -1307,14 +1308,17 @@ function renderCodexUsage(usage) {
         true, 7 * 24 * 60, timeFormat, weeklyDateFormat);
 
     renderCompactCodex(elements.compactCodexSessionFill, elements.compactCodexSessionPct,
-        usage.session, '5h', 'codex');
+        usage.session, 'Session', 'codex');
     renderCompactCodex(elements.compactCodexWeeklyFill, elements.compactCodexWeeklyPct,
-        usage.weekly, 'Wk', 'codex-weekly');
+        usage.weekly, 'Weekly', 'codex-weekly');
 
     renderBarItem(elements.barCodexSessionFill, elements.barCodexSessionPct,
         usage.session ? usage.session.usedPercent : null);
     renderBarItem(elements.barCodexWeeklyFill, elements.barCodexWeeklyPct,
         usage.weekly ? usage.weekly.usedPercent : null);
+    // Same as Claude's Resets item: mirror the session countdown the widget
+    // row just rendered rather than formatting it a second way.
+    elements.barCodexResetsIn.textContent = elements.codexSessionTimeText.textContent || '--:--';
 
     // The numbers are only as fresh as the last Codex turn on this machine,
     // which nothing else on screen can say, so every view's tooltip does.
@@ -1792,6 +1796,9 @@ function startCountdown() {
     countdownInterval = setInterval(() => {
         refreshTimers();
         if (isExpanded) refreshExtraTimers();
+        // The strip's Resets text mirrors the countdown just redrawn; without
+        // this it only moved on each fetch, while Codex's beside it ticks.
+        if (isBarMode && latestUsageData) updateBarUsage(latestUsageData);
     }, 30000);
 }
 
