@@ -421,4 +421,14 @@ function getUsage() {
   };
 }
 
-module.exports = { start, stop, getUsage };
+/**
+ * Refresh button: ask chatgpt.com and re-read the local logs now, rather than
+ * waiting out the 5-minute and 15-second polls, then answer as getUsage().
+ * chatgptUsage.refresh() collapses concurrent calls into one request.
+ */
+async function refreshNow() {
+  await Promise.all([chatgptUsage.refresh().catch(() => {}), poll().catch(() => {})]);
+  return getUsage();
+}
+
+module.exports = { start, stop, getUsage, refreshNow };

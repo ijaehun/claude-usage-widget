@@ -1273,6 +1273,8 @@ ipcMain.handle('get-codex-service-status', () => serviceStatus.getCodexStatus())
 // OpenAI Codex plan limits, parsed from Codex's local session logs. Also served
 // from a cached sample; see src/codex-usage.js for where the numbers come from.
 ipcMain.handle('get-codex-usage', () => codexUsage.getUsage());
+// The refresh buttons: fetch now instead of answering from cache.
+ipcMain.handle('refresh-codex-usage', () => codexUsage.refreshNow());
 
 // Connecting a ChatGPT account, for people without Codex. The sign-in happens
 // in the user's real browser via an OAuth loopback (see src/chatgpt-usage.js);

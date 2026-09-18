@@ -82,6 +82,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // OpenAI Codex plan limits, read from Codex's local session logs
   getCodexUsage: () => ipcRenderer.invoke('get-codex-usage'),
+  refreshCodexUsage: () => ipcRenderer.invoke('refresh-codex-usage'),
   // Connecting a ChatGPT account (for machines without Codex)
   getChatGPTState: () => ipcRenderer.invoke('chatgpt-get-state'),
   connectChatGPT: () => ipcRenderer.invoke('chatgpt-connect'),

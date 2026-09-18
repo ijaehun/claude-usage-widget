@@ -414,7 +414,7 @@
                         <span class="status-dot unknown" id="barStatusDot"></span>
                         <span class="bar-status-text" id="barStatusText" style="display: none;"></span>
                     </button>
-                    <button class="bar-icon-btn" id="barRefreshBtn" title="Refresh Claude usage" data-i18n-title>
+                    <button class="bar-icon-btn" id="barRefreshBtn" title="Refresh" data-i18n-title>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <path d="M23 4v6h-6M1 20v-6h6" />
                             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
@@ -456,6 +456,14 @@
                     <button class="bar-status" id="barCodexStatusItem" title="Codex service status">
                         <span class="status-dot unknown" id="barCodexStatusDot"></span>
                         <span class="bar-status-text" id="barCodexStatusText" style="display: none;"></span>
+                    </button>
+                    <!-- Codex-only has no Claude group, and with it went the bar's
+                         only refresh button. Shown only then (styles.css). -->
+                    <button class="bar-icon-btn bar-codex-refresh" id="barCodexRefreshBtn" title="Refresh" data-i18n-title>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M23 4v6h-6M1 20v-6h6" />
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                        </svg>
                     </button>
                     <span class="bar-item">
                         <span class="bar-key" data-short="Ses">Session</span>

@@ -2397,6 +2397,10 @@ body.no-codex #chatgptBtn {
     display: none !important;
 }
 
+/* The Codex group's own refresh button exists for Codex-only. */
+.bar-icon-btn.bar-codex-refresh { display: none; }
+body.no-claude .bar-icon-btn.bar-codex-refresh { display: flex; }
+
 /* With Claude's group gone, Codex's is the first thing in the strip; its
    divider would separate it from nothing. */
 body.no-claude .bar-group.bar-group-codex {

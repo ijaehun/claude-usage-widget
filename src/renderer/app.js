@@ -207,6 +207,7 @@ const elements = {
     barContent: document.getElementById('barContent'),
     barUndockBtn: document.getElementById('barUndockBtn'),
     barRefreshBtn: document.getElementById('barRefreshBtn'),
+    barCodexRefreshBtn: document.getElementById('barCodexRefreshBtn'),
     barSessionFill: document.getElementById('barSessionFill'),
     barSessionPct: document.getElementById('barSessionPct'),
     barWeeklyFill: document.getElementById('barWeeklyFill'),
@@ -462,7 +463,7 @@ function setupEventListeners() {
     elements.refreshBtn.addEventListener('click', async () => {
         debugLog('Refresh button clicked');
         elements.refreshBtn.classList.add('spinning');
-        await Promise.all([fetchUsageData(), refreshCodexUsage()]);
+        await Promise.all([fetchUsageData(), refreshCodexNow()]);
         elements.refreshBtn.classList.remove('spinning');
     });
 
@@ -483,13 +484,16 @@ function setupEventListeners() {
         await window.electronAPI.setBarMode(true);
     });
 
-    elements.barRefreshBtn.addEventListener('click', async () => {
-        // Same fetch the title-bar refresh runs; the bar has no title bar of
-        // its own, so this is the only way to force a refresh while docked.
-        elements.barRefreshBtn.classList.add('spinning');
-        await fetchUsageData();
-        elements.barRefreshBtn.classList.remove('spinning');
-    });
+    // Same refresh the title bar runs; the bar has no title bar of its own, so
+    // these are the only way to force one while docked. Claude's group carries
+    // one; Codex's gets its own only when Claude's group is not there.
+    for (const btn of [elements.barRefreshBtn, elements.barCodexRefreshBtn]) {
+        btn.addEventListener('click', async () => {
+            btn.classList.add('spinning');
+            await Promise.all([fetchUsageData(), refreshCodexNow()]);
+            btn.classList.remove('spinning');
+        });
+    }
 
     elements.barUndockBtn.addEventListener('click', () => {
         window.electronAPI.setBarMode(false);
@@ -1613,6 +1617,16 @@ async function refreshCodexUsage() {
         renderCodexUsage(await window.electronAPI.getCodexUsage());
     } catch (err) {
         console.warn('Codex usage unavailable:', err);
+    }
+}
+
+/** The refresh buttons: have main fetch now rather than answer from its cache. */
+async function refreshCodexNow() {
+    if (!codexOn()) return;
+    try {
+        renderCodexUsage(await window.electronAPI.refreshCodexUsage());
+    } catch (err) {
+        console.warn('Codex refresh failed:', err);
     }
 }
 
