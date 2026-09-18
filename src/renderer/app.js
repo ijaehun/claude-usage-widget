@@ -171,6 +171,7 @@ const elements = {
     codexSection: document.getElementById('codexSection'),
     codexEmptyText: document.getElementById('codexEmptyText'),
     codexConnectBtn: document.getElementById('codexConnectBtn'),
+    codexHideBtn: document.getElementById('codexHideBtn'),
     compactCodexReset: document.getElementById('compactCodexReset'),
     codexSessionProgress: document.getElementById('codexSessionProgress'),
     codexSessionPercentage: document.getElementById('codexSessionPercentage'),
@@ -345,9 +346,16 @@ async function init() {
     }
 
     // An install from before this setting existed that is already logged in
-    // keeps showing everything; only a genuinely fresh start gets asked.
-    services = settings.services || (isLoggedIn() ? 'both' : null);
-    if (services && !settings.services) await persistServices();
+    // keeps showing what it showed — Codex too only if this PC has Codex usage,
+    // which is when its rows used to appear. Without that, "both" would now put
+    // a Connect ChatGPT box in front of everyone who never used Codex. Only a
+    // genuinely fresh start gets asked.
+    services = settings.services || null;
+    if (!services && isLoggedIn()) {
+        const codex = await window.electronAPI.getCodexUsage().catch(() => null);
+        services = codex && codex.available ? 'both' : 'claude';
+        await persistServices();
+    }
     applyServices();
 
     // Populate org selector if user has multiple orgs
@@ -585,6 +593,12 @@ function setupEventListeners() {
     };
     elements.chatgptBtn.addEventListener('click', toggleChatGPT);
     elements.codexConnectBtn.addEventListener('click', toggleChatGPT);
+    // "Hide Codex" in the empty state: track Claude only (Settings > Track undoes it).
+    elements.codexHideBtn.addEventListener('click', async () => {
+        services = 'claude';
+        await persistServices();
+        applyServices();
+    });
 
     // Theme buttons
     elements.themeBtns.forEach(btn => {
@@ -1450,9 +1464,10 @@ function renderCodexUsage(usage) {
     if (usage && usage.account) renderChatGPTButton(usage.account);
 
     const available = !!(usage && usage.available);
-    // Codex-only keeps the section up even with nothing to show: it is the
-    // whole widget then, and the empty state is where the user connects.
-    const visible = codexOn() && (available || !claudeOn());
+    // Tracked means shown, even with nothing to show yet: the empty state is
+    // where the user connects. Hidden, "both" on a PC without Codex left the
+    // Connect ChatGPT button buried in Settings, and nothing said it was there.
+    const visible = codexOn();
     const changed = visible !== codexShown;
     codexShown = visible;
     latestCodexUsage = visible && available ? usage : null;
@@ -1481,6 +1496,8 @@ function renderCodexUsage(usage) {
             ? 'Codex is signed in, but no usage is recorded yet.'
             : reason === 'Codex not found' ? 'Codex is not set up on this PC.' : 'No Codex usage on this PC yet.');
         elements.codexConnectBtn.style.display = account.codexToken ? 'none' : '';
+        // Beside Claude, an out: someone who picked both but has no Codex.
+        elements.codexHideBtn.style.display = claudeOn() ? '' : 'none';
         for (const el of [elements.compactCodexSessionPct, elements.compactCodexWeeklyPct]) el.textContent = '--';
         for (const el of [elements.compactCodexSessionFill, elements.compactCodexWeeklyFill]) el.style.width = '0%';
         renderBarItem(elements.barCodexSessionFill, elements.barCodexSessionPct, null);

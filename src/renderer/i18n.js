@@ -65,6 +65,8 @@ const I18N_KO = {
     'ChatGPT connected': 'ChatGPT 연결됨',
     'Reconnect ChatGPT': 'ChatGPT 다시 연결',
     'Connect ChatGPT': 'ChatGPT 연결',
+    'Hide Codex': 'Codex 숨기기',
+    'Track Claude only. Change it back in Settings → Track.': 'Claude만 추적해요. 설정 → 추적에서 되돌릴 수 있어요.',
     'Codex limits come live from your ChatGPT account. Click to disconnect.':
         'Codex 한도를 ChatGPT 계정에서 실시간으로 가져와요. 클릭하면 연결을 끊어요.',
     'The ChatGPT sign-in expired. Click to sign in again.': 'ChatGPT 로그인이 만료됐어요. 클릭해서 다시 로그인하세요.',

@@ -152,12 +152,9 @@ function getCompactHeight() {
     // Codex-only: Session and Weekly are gone (renderer's body.no-claude).
     height -= COMPACT_CLAUDE_ROWS_HEIGHT;
   }
-  // Codex's two windows share one split row; shown when there is Codex usage
-  // on this machine — which the renderer decides from the same sample — and
-  // always when Codex is the only thing tracked. Mirrors renderCodexUsage().
-  if (services !== 'claude' && (!claude || codexUsage.getUsage().available)) {
-    height += COMPACT_ROW_HEIGHT;
-  }
+  // Codex's two windows share one split row, shown whenever Codex is tracked —
+  // with data or as the not-connected placeholder. Mirrors renderCodexUsage().
+  if (services !== 'claude') height += COMPACT_ROW_HEIGHT;
   return height;
 }
 const CHART_DAYS = 7;

@@ -2468,6 +2468,20 @@ body.no-claude #mainContent:has(.codex-section.empty) .usage-headers {
     visibility: hidden;
 }
 
+/* Quieter than Connect ChatGPT beside it: the way out, not the way in. */
+.codex-hide-btn {
+    background: none;
+    border: none;
+    padding: 5px 4px;
+    color: #808090;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.codex-hide-btn:hover { color: #c0c0c8; text-decoration: underline; }
+body.theme-light .codex-hide-btn { color: #707080; }
+body.theme-light .codex-hide-btn:hover { color: #303040; }
+
 .codex-empty-text {
     color: #a0a0a0;
     font-size: 11px;
