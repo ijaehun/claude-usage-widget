@@ -111,11 +111,18 @@ function isExpired(token) {
 
 function toWindow(raw) {
   if (!raw || typeof raw.used_percent !== 'number' || !Number.isFinite(raw.used_percent)) return null;
+  let resetsAt = null;
+  if (typeof raw.reset_at === 'number') {
+    resetsAt = raw.reset_at > 1e12 ? raw.reset_at : raw.reset_at * 1000;
+  } else if (typeof raw.reset_after_seconds === 'number') {
+    // Some responses carry only the countdown. Read at fetch time, so "now"
+    // is when the server said it.
+    resetsAt = Date.now() + raw.reset_after_seconds * 1000;
+  }
   return {
     usedPercent: Math.min(100, Math.max(0, raw.used_percent)),
     windowMinutes: typeof raw.limit_window_seconds === 'number' ? raw.limit_window_seconds / 60 : null,
-    resetsAt: typeof raw.reset_at === 'number'
-      ? (raw.reset_at > 1e12 ? raw.reset_at : raw.reset_at * 1000) : null,
+    resetsAt,
   };
 }
 

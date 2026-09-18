@@ -1521,8 +1521,20 @@ function renderCodexUsage(usage) {
         elements.codexWeeklyTimer, elements.codexWeeklyTimeText, elements.codexWeeklyResetsAt,
         true, 7 * 24 * 60, timeFormat, weeklyDateFormat);
 
+    // Some plans have no 5-hour window at all, only the weekly one. Say so,
+    // rather than a session "Not started" that never starts, and let the
+    // Resets items count down to the limit that does exist.
+    const noSession = !usage.session && !!usage.weekly;
+    if (noSession) {
+        elements.codexSessionPercentage.textContent = '—';
+        elements.codexSessionTimeText.textContent = 'No 5h limit';
+        elements.codexSessionTimeText.title = t('This plan has no 5-hour limit, only the weekly one.');
+        elements.codexSessionResetsAt.textContent = '';
+    }
+
     renderCompactCodex(elements.compactCodexSessionFill, elements.compactCodexSessionPct,
         usage.session, 'Session', 'codex');
+    if (noSession) elements.compactCodexSessionPct.textContent = 'Session —';
     renderCompactCodex(elements.compactCodexWeeklyFill, elements.compactCodexWeeklyPct,
         usage.weekly, 'Weekly', 'codex-weekly');
 
@@ -1531,9 +1543,11 @@ function renderCodexUsage(usage) {
     renderBarItem(elements.barCodexWeeklyFill, elements.barCodexWeeklyPct,
         usage.weekly ? usage.weekly.usedPercent : null);
     // Same as Claude's Resets item: mirror the session countdown the widget
-    // row just rendered rather than formatting it a second way.
-    mirrorCountdown(elements.barCodexResetsIn, elements.codexSessionTimeText, false);
-    mirrorCountdown(elements.compactCodexReset, elements.codexSessionTimeText, true);
+    // row just rendered rather than formatting it a second way — the weekly
+    // one on a plan without a session window, since that is the next reset.
+    const resetSource = noSession ? elements.codexWeeklyTimeText : elements.codexSessionTimeText;
+    mirrorCountdown(elements.barCodexResetsIn, resetSource, false);
+    mirrorCountdown(elements.compactCodexReset, resetSource, true);
 
     // The numbers are only as fresh as the last Codex turn on this machine,
     // which nothing else on screen can say, so every view's tooltip does.
