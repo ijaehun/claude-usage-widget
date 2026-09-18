@@ -881,17 +881,7 @@ function createTray() {
       {
         label: 'Log Out',
         click: async () => {
-          store.delete('sessionKey');
-          store.delete('organizationId');
-          // Clear all Claude.ai cookies and session storage
-          const cookies = await session.defaultSession.cookies.get({ url: 'https://claude.ai' });
-          for (const cookie of cookies) {
-            await session.defaultSession.cookies.remove('https://claude.ai', cookie.name);
-          }
-          await session.defaultSession.clearStorageData({
-            storages: ['localstorage', 'sessionstorage', 'cachestorage'],
-            origin: 'https://claude.ai'
-          });
+          await clearClaudeLogin();
           if (mainWindow) {
             mainWindow.webContents.send('session-expired');
           }
@@ -1119,21 +1109,37 @@ ipcMain.handle('save-credentials', async (event, { sessionKey, organizationId })
   return true;
 });
 
-ipcMain.handle('delete-credentials', async () => {
+// The sign-in providers the login window can pass through. Their cookies live
+// in the same session as claude.ai's, and leaving them made "log out, sign in
+// as someone else" go straight back into the previous Google account.
+const LOGIN_PROVIDER_HOST = /(^|\.)(google(\.[a-z]{2,3}){1,2}|apple\.com|microsoftonline\.com|live\.com)$/;
+
+// An explicit logout, from Settings or the tray menu: the stored key (both the
+// plain and the encrypted form — the tray path used to miss the latter, which
+// get-credentials then still returned), claude.ai's cookies and storage, and
+// the providers' cookies above.
+async function clearClaudeLogin() {
   store.delete('sessionKey');
   store.delete('sessionKey_encrypted');
   store.delete('organizationId');
-  // Remove all Claude.ai cookies
-  const cookies = await session.defaultSession.cookies.get({ url: 'https://claude.ai' });
-  for (const cookie of cookies) {
-    await session.defaultSession.cookies.remove('https://claude.ai', cookie.name);
+  const ses = session.defaultSession;
+  for (const cookie of await ses.cookies.get({})) {
+    const host = String(cookie.domain || '').replace(/^\./, '');
+    const isClaude = host === 'claude.ai' || host.endsWith('.claude.ai');
+    if (!isClaude && !LOGIN_PROVIDER_HOST.test(host)) continue;
+    const url = (cookie.secure ? 'https://' : 'http://') + host + (cookie.path || '/');
+    try { await ses.cookies.remove(url, cookie.name); } catch { /* already gone */ }
   }
   // Clear any cached data from the Electron session (storage, cache)
   // so nothing lingers on shared machines
-  await session.defaultSession.clearStorageData({
+  await ses.clearStorageData({
     storages: ['localstorage', 'sessionstorage', 'cachestorage'],
     origin: 'https://claude.ai'
   });
+}
+
+ipcMain.handle('delete-credentials', async () => {
+  await clearClaudeLogin();
   return true;
 });
 
@@ -1801,7 +1807,12 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
       || error.message.startsWith('CloudflareChallenge')
       || error.message.startsWith('UnexpectedHTML');
     if (isBlocked) {
+      // Both forms of the key: with only the plain one deleted, get-credentials
+      // kept returning the encrypted one alongside no organization.
+      // Deliberately not clearClaudeLogin(): an expiry is not a logout, and
+      // keeping the Google session makes signing back in one click.
       store.delete('sessionKey');
+      store.delete('sessionKey_encrypted');
       store.delete('organizationId');
       if (mainWindow) {
         mainWindow.webContents.send('session-expired');
