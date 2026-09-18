@@ -2019,13 +2019,6 @@ body.theme-light .compact-sys-val.unavailable {
 .status-text.down    { color: #f87171; }
 .status-text.unknown { color: #666; }
 
-/* Compact mode carries the dot alone, inside the existing system strip. */
-.compact-status {
-    display: inline-flex;
-    align-items: center;
-    cursor: pointer;
-}
-
 /* Light theme */
 body.theme-light .status-section { border-top-color: rgba(0, 0, 0, 0.07); }
 body.theme-light .status-label { color: #6b6b6b; }
@@ -2388,8 +2381,6 @@ body.theme-light .bar-icon-btn:hover { color: #2a2a2a; }
 body.no-claude .claude-row,
 body.no-claude #graphSection,
 body.no-claude #graphBtn,
-body.no-claude #compactStatusDot,
-body.no-codex #compactCodexStatusDot,
 body.no-claude .bar-group-claude,
 body.no-claude #logoutBtn,
 body.no-claude #orgSelectorCol,
@@ -2497,6 +2488,52 @@ body.theme-light .codex-hide-btn:hover { color: #303040; }
 
 body.theme-light .codex-empty-text { color: #606070; }
 
+/* Compact rows grouped by service (index.html): the name once per group,
+   then the window. Narrower columns and gap than the old two-column row,
+   so the bar keeps ~90px at the 290px compact width. */
+.compact-codex-rows { display: flex; flex-direction: column; gap: 7px; }
+.compact-rows .compact-row { gap: 6px; }
+
+.compact-group {
+    width: 58px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #a78bfa;
+}
+
+.compact-group.codex { color: #a1a1aa; }
+
+/* The weekly row names Codex only when the session row above it is gone. */
+body:not(.codex-no-session) .compact-group-weekly { visibility: hidden; }
+
+.compact-rows .compact-label {
+    width: 40px;
+    text-transform: none;
+    font-weight: 500;
+    letter-spacing: 0;
+}
+
+
+/* The service status dot beside its name; clicks open the status panel. */
+.compact-group-dot {
+    background: none;
+    border: none;
+    padding: 0;
+    display: inline-flex;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+}
+
+body.theme-light .compact-group { color: #7c3aed; }
+body.theme-light .compact-group.codex { color: #71717a; }
+
+
 /* Compact reset countdown, trailing each row. */
 .compact-reset {
     width: 44px;
@@ -2554,8 +2591,6 @@ body.theme-light .compact-reset { color: #505060; }
     -webkit-app-region: no-drag;
 }
 
-/* Codex service status. Compact: its dot beside Claude's in the one item. */
-.compact-status { gap: 4px; }
 
 /* Widget row: a thin rule between Claude's chips and the Codex chip. */
 .status-chip-sep {

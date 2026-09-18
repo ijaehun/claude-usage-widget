@@ -331,10 +331,12 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
                 <div class="compact-rows">
-                    <!-- The trailing .compact-reset on each row is the time left
-                         until that limit resets — the one number compact used
-                         to drop entirely. -->
+                    <!-- Grouped by service: its name once on the left, the window
+                         beside it, the bar, and the time until that window resets.
+                         Codex gets the same rows as Claude — it used to be one split
+                         row that read like neither. -->
                     <div class="compact-row claude-row">
+                        <span class="compact-group claude"><button class="compact-group-dot claude-dot" title="Claude service status"><span class="status-dot unknown" id="compactStatusDot"></span></button>Claude</span>
                         <span class="compact-label">Session</span>
                         <div class="compact-bar-wrap">
                             <div class="compact-bar-bg">
@@ -345,6 +347,7 @@
                         <span class="compact-reset" id="compactSessionReset">--</span>
                     </div>
                     <div class="compact-row claude-row">
+                        <span class="compact-group"></span>
                         <span class="compact-label">Weekly</span>
                         <div class="compact-bar-wrap">
                             <div class="compact-bar-bg">
@@ -355,6 +358,7 @@
                         <span class="compact-reset" id="compactWeeklyReset">--</span>
                     </div>
                     <div class="compact-row claude-row" id="compactFableRow" style="display: none;">
+                        <span class="compact-group"></span>
                         <span class="compact-label">Fable</span>
                         <div class="compact-bar-wrap">
                             <div class="compact-bar-bg">
@@ -364,33 +368,38 @@
                         </div>
                         <span class="compact-reset" id="compactFableReset">--</span>
                     </div>
-                    <!-- Codex: both windows share one row, split, so compact
-                         grows by a single COMPACT_ROW_HEIGHT rather than two. -->
-                    <div class="compact-row" id="compactCodexRow" style="display: none;">
-                        <span class="compact-label">Codex</span>
-                        <div class="compact-bar-wrap compact-bar-split">
-                            <div class="compact-bar-bg codex-session-part">
-                                <div class="compact-bar-fill codex" id="compactCodexSessionFill" style="width: 0%"></div>
-                                <span class="compact-pct" id="compactCodexSessionPct">Session 0%</span>
+                    <!-- The wrapper carries the visibility and tooltip; the session
+                         row goes on plans without a 5-hour window (codex-session-part),
+                         and the weekly row then shows the name itself. -->
+                    <div class="compact-codex-rows" id="compactCodexRow" style="display: none;">
+                        <div class="compact-row codex-session-part">
+                            <span class="compact-group codex"><button class="compact-group-dot codex-dot" title="Codex service status"><span class="status-dot unknown" id="compactCodexStatusDot"></span></button>Codex</span>
+                            <span class="compact-label">Session</span>
+                            <div class="compact-bar-wrap">
+                                <div class="compact-bar-bg">
+                                    <div class="compact-bar-fill codex" id="compactCodexSessionFill" style="width: 0%"></div>
+                                    <span class="compact-pct" id="compactCodexSessionPct">0%</span>
+                                </div>
                             </div>
-                            <div class="compact-bar-bg">
-                                <div class="compact-bar-fill codex-weekly" id="compactCodexWeeklyFill" style="width: 0%"></div>
-                                <span class="compact-pct" id="compactCodexWeeklyPct">Weekly 0%</span>
-                            </div>
+                            <span class="compact-reset" id="compactCodexReset">--</span>
                         </div>
-                        <!-- Session's, like the bar's Codex Resets item. -->
-                        <span class="compact-reset" id="compactCodexReset">--</span>
+                        <div class="compact-row">
+                            <span class="compact-group codex compact-group-weekly"><button class="compact-group-dot codex-dot" title="Codex service status"><span class="status-dot unknown"></span></button>Codex</span>
+                            <span class="compact-label">Weekly</span>
+                            <div class="compact-bar-wrap">
+                                <div class="compact-bar-bg">
+                                    <div class="compact-bar-fill codex-weekly" id="compactCodexWeeklyFill" style="width: 0%"></div>
+                                    <span class="compact-pct" id="compactCodexWeeklyPct">0%</span>
+                                </div>
+                            </div>
+                            <span class="compact-reset" id="compactCodexWeeklyReset">--</span>
+                        </div>
                     </div>
-    <!-- Local machine stats — always on in compact mode, since a small
+                    <!-- Local machine stats — always on in compact mode, since a small
                          always-visible widget is exactly where these matter most. -->
                     <div class="compact-sysmon" id="compactSysmon">
-                        <!-- Rides in the existing strip rather than claiming a
-                             row of its own, so compact mode keeps its height. -->
-                        <span class="compact-sys-item compact-status" id="compactStatusItem" title="Service status">
-                            <span class="status-dot unknown" id="compactStatusDot"></span>
-                            <!-- Codex's, from status.openai.com. -->
-                            <span class="status-dot unknown" id="compactCodexStatusDot"></span>
-                        </span>
+                        <!-- The machine only: each service's status dot sits beside
+                             its name in the rows above, as in the docked bar. -->
                         <span class="compact-sys-item"><button class="compact-sys-dot" id="compactSysDotBtn" title="System details" data-i18n-title><span class="status-dot ok" id="compactSysDot"></span></button><span class="compact-sys-key">CPU</span> <span class="compact-sys-val" id="compactCpuPct">--</span></span>
                         <span class="compact-sys-item"><span class="compact-sys-key">GPU</span> <span class="compact-sys-val" id="compactGpuPct">--</span></span>
                         <span class="compact-sys-item"><span class="compact-sys-key">RAM</span> <span class="compact-sys-val" id="compactRamPct">--</span></span>

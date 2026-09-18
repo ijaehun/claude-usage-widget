@@ -123,6 +123,8 @@ const COMPACT_SYSMON_HEIGHT = 22; // the always-on CPU/GPU/RAM strip
 // measured. Not 2 * COMPACT_ROW_HEIGHT: that one carries slack per optional
 // row, and taking it off twice left Codex-only compact 2px short.
 const COMPACT_CLAUDE_ROWS_HEIGHT = 42;
+// One compact row as laid out (14px bar + 7px gap), measured.
+const COMPACT_LINE_HEIGHT = 21;
 // Docked bar mode: a full-width strip along a screen edge, registered as a
 // Windows appbar so maximized windows stop at it instead of covering it.
 const BAR_HEIGHT = 34;
@@ -152,9 +154,15 @@ function getCompactHeight() {
     // Codex-only: Session and Weekly are gone (renderer's body.no-claude).
     height -= COMPACT_CLAUDE_ROWS_HEIGHT;
   }
-  // Codex's two windows share one split row, shown whenever Codex is tracked —
-  // with data or as the not-connected placeholder. Mirrors renderCodexUsage().
-  if (services !== 'claude') height += COMPACT_ROW_HEIGHT;
+  // Codex gets a row per window, like Claude, whenever it is tracked — with
+  // data or as the not-connected placeholder — and one row on a plan with no
+  // 5-hour window. Mirrors renderCodexUsage(). COMPACT_LINE_HEIGHT, not
+  // COMPACT_ROW_HEIGHT: that one carries slack per optional row.
+  if (services !== 'claude') {
+    const u = codexUsage.getUsage();
+    const noSession = u.available && !u.session && !!u.weekly;
+    height += (noSession ? 1 : 2) * COMPACT_LINE_HEIGHT;
+  }
   return height;
 }
 const CHART_DAYS = 7;

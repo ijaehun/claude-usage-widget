@@ -162,7 +162,6 @@ const elements = {
     statusRow: document.getElementById('statusRow'),
     statusChips: document.getElementById('statusChips'),
     statusText: document.getElementById('statusText'),
-    compactStatusItem: document.getElementById('compactStatusItem'),
     compactStatusDot: document.getElementById('compactStatusDot'),
     barStatusItem: document.getElementById('barStatusItem'),
     barStatusDot: document.getElementById('barStatusDot'),
@@ -177,6 +176,7 @@ const elements = {
     codexConnectBtn: document.getElementById('codexConnectBtn'),
     codexHideBtn: document.getElementById('codexHideBtn'),
     compactCodexReset: document.getElementById('compactCodexReset'),
+    compactCodexWeeklyReset: document.getElementById('compactCodexWeeklyReset'),
     codexSessionProgress: document.getElementById('codexSessionProgress'),
     codexSessionPercentage: document.getElementById('codexSessionPercentage'),
     codexSessionTimer: document.getElementById('codexSessionTimer'),
@@ -506,7 +506,8 @@ function setupEventListeners() {
     // Every status indicator toggles the detail panel. Nothing in the widget
     // can act on an outage, so the affordance is "show me the details" — and
     // the details belong in the popup, not crammed into a 34px strip.
-    for (const el of [elements.statusRow, elements.barStatusItem, elements.compactStatusItem, elements.barCodexStatusItem]) {
+    for (const el of [elements.statusRow, elements.barStatusItem, elements.barCodexStatusItem,
+        ...document.querySelectorAll('.compact-group-dot')]) {
         el.addEventListener('click', () => toggleStatusPanel(el));
     }
 
@@ -1350,21 +1351,19 @@ function renderServiceStatus(claude, codex) {
     lines.push(t('Click for details'));
     const tooltip = lines.join('\n');
 
-    // Widget row. Alone, a service gets a chip per component. With Claude
-    // beside it, Codex collapses to one chip for the worst of its four, so the
-    // row stays one line; the panel has the breakdown.
+    // Widget row, one rule: two services, one chip each (the worst of its
+    // parts); one service, a chip per part. Both spread out would not fit one
+    // line, and a mix of the two read as inconsistent. The panel has the
+    // breakdown either way.
     const chips = [];
-    if (claudeOn() && claude) {
-        for (const c of claude.components || []) chips.push(statusChip(c.short, c.level, `${c.label}: ${t(c.statusText)}`));
-    }
-    if (codexOn() && codex) {
-        if (claudeOn()) {
-            const sep = document.createElement('span');
-            sep.className = 'status-chip-sep';
-            chips.push(sep, statusChip('Codex', codex.level, 'Codex: ' + overallText(codex)));
-        } else {
-            for (const c of codex.components || []) chips.push(statusChip(c.short, c.level, `${c.label}: ${t(c.statusText)}`));
-        }
+    const perPart = (st) => (st.components || []).map((c) => statusChip(c.short, c.level, `${c.label}: ${t(c.statusText)}`));
+    if (sources.length > 1) {
+        const sep = document.createElement('span');
+        sep.className = 'status-chip-sep';
+        chips.push(statusChip('Claude', claude.level, 'Claude: ' + overallText(claude)), sep,
+            statusChip('Codex', codex.level, 'Codex: ' + overallText(codex)));
+    } else {
+        chips.push(...perPart(sources[0].status));
     }
     elements.statusChips.replaceChildren(...chips);
 
@@ -1385,13 +1384,17 @@ function renderServiceStatus(claude, codex) {
 
     // Compact strip and docked bar: one dot per service, for the worst of its
     // components. CSS hides the dot of an untracked one.
-    elements.compactStatusItem.title = tooltip;
     if (claude) {
         elements.compactStatusDot.className = 'status-dot ' + claude.level;
+        elements.compactStatusDot.parentElement.title = 'Claude: ' + overallText(claude);
         renderBarStatus(claude, elements.barStatusDot, elements.barStatusText, elements.barStatusItem, tooltip);
     }
     if (codex) {
-        elements.compactCodexStatusDot.className = 'status-dot ' + codex.level;
+        // Two: the weekly row names Codex when the session row is gone.
+        document.querySelectorAll('.compact-group-dot.codex-dot').forEach((btn) => {
+            btn.firstElementChild.className = 'status-dot ' + codex.level;
+            btn.title = 'Codex: ' + overallText(codex);
+        });
         renderBarStatus(codex, elements.barCodexStatusDot, elements.barCodexStatusText, elements.barCodexStatusItem, tooltip);
     }
 }
@@ -1449,11 +1452,11 @@ function renderCodexRow(win, progressEl, pctEl, timerEl, timeTextEl, resetsAtEl,
     resetsAtEl.style.opacity = resetsAt ? '1' : '0.4';
 }
 
-/** One half of the split Codex row in compact mode. */
+/** One Codex row in compact mode (its window name is the row label). */
 function renderCompactCodex(fillEl, pctEl, win, tag, fillClass) {
     const pct = win ? win.usedPercent : 0;
     fillEl.style.width = `${pct}%`;
-    pctEl.textContent = `${tag} ${Math.round(pct)}%`;
+    pctEl.textContent = `${Math.round(pct)}%`;
     fillEl.className = 'compact-bar-fill ' + fillClass;
     if (pct >= dangerThreshold) fillEl.classList.add('danger');
     else if (pct >= warnThreshold) fillEl.classList.add('warning');
@@ -1522,6 +1525,7 @@ function renderCodexUsage(usage) {
         renderBarItem(elements.barCodexWeeklyFill, elements.barCodexWeeklyPct, null);
         elements.barCodexResetsIn.textContent = '--:--';
         elements.compactCodexReset.textContent = '--';
+        elements.compactCodexWeeklyReset.textContent = '--';
         const hint = t('No Codex usage yet — connect ChatGPT in Settings, or use Codex on this PC.');
         elements.compactCodexRow.title = hint;
         elements.barCodexGroup.title = hint;
@@ -1560,7 +1564,9 @@ function renderCodexUsage(usage) {
     // one on a plan without a session window, since that is the next reset.
     const resetSource = noSession ? elements.codexWeeklyTimeText : elements.codexSessionTimeText;
     mirrorCountdown(elements.barCodexResetsIn, resetSource, false);
-    mirrorCountdown(elements.compactCodexReset, resetSource, true);
+    // Compact has a row per window, each with its own countdown.
+    mirrorCountdown(elements.compactCodexReset, elements.codexSessionTimeText, true);
+    mirrorCountdown(elements.compactCodexWeeklyReset, elements.codexWeeklyTimeText, true);
 
     // The numbers are only as fresh as the last Codex turn on this machine,
     // which nothing else on screen can say, so every view's tooltip does.
