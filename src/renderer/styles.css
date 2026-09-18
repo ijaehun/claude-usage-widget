@@ -2397,6 +2397,10 @@ body.no-codex #chatgptBtn {
     display: none !important;
 }
 
+/* Codex plans with no 5-hour window (the higher tiers have only a weekly
+   limit): the session row, compact half and bar item go, in every view. */
+body.codex-no-session .codex-session-part { display: none !important; }
+
 /* The Codex group's own refresh button exists for Codex-only. */
 .bar-icon-btn.bar-codex-refresh { display: none; }
 body.no-claude .bar-icon-btn.bar-codex-refresh { display: flex; }

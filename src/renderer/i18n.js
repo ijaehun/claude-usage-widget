@@ -66,7 +66,6 @@ const I18N_KO = {
     'Reconnect ChatGPT': 'ChatGPT 다시 연결',
     'Connect ChatGPT': 'ChatGPT 연결',
     'Hide Codex': 'Codex 숨기기',
-    'This plan has no 5-hour limit, only the weekly one.': '이 요금제는 5시간 한도 없이 주간 한도만 있어요.',
     'Track Claude only. Change it back in Settings → Track.': 'Claude만 추적해요. 설정 → 추적에서 되돌릴 수 있어요.',
     'Codex limits come live from your ChatGPT account. Click to disconnect.':
         'Codex 한도를 ChatGPT 계정에서 실시간으로 가져와요. 클릭하면 연결을 끊어요.',

@@ -57,10 +57,14 @@ let codexTimer = null;
 let latestCodexUsage = null; // null unless there is Codex usage to paint
 let lastCodexSample = null;  // the raw sample, kept to re-render on a services change
 let codexShown = false;      // whether the Codex section is on screen (rows or empty state)
+let codexNoSession = false;  // the plan has no 5-hour window, so the Session row is hidden
 // Both rows plus the section's border, padding and top margin, measured as the
 // delta the section adds to the document, like STATUS_HEIGHT. Only added while
 // the section is shown. The Codex-only empty state is sized to match.
 const CODEX_HEIGHT = 83;
+// One Codex row, taken off CODEX_HEIGHT when the plan has no session window.
+// Measured as a delta, like the rest.
+const CODEX_ROW_HEIGHT = 34;
 // main.js re-reads Codex's logs every 15s and answers from cache, so this only
 // has to keep the bars and countdowns from visibly lagging behind it.
 const CODEX_INTERVAL = 15000;
@@ -1455,6 +1459,15 @@ function renderCompactCodex(fillEl, pctEl, win, tag, fillClass) {
     else if (pct >= warnThreshold) fillEl.classList.add('warning');
 }
 
+/** Show or drop the Codex session parts; the widget height follows. */
+function setCodexNoSession(noSession) {
+    if (noSession === codexNoSession) return;
+    codexNoSession = noSession;
+    document.body.classList.toggle('codex-no-session', noSession);
+    // Compact's Codex row is split in one line, so only the widget changes height.
+    if (!isCompactMode) resizeWidget();
+}
+
 /**
  * Paint the Codex rows in all three views from one main-process snapshot.
  *
@@ -1491,6 +1504,7 @@ function renderCodexUsage(usage) {
         if (isCompactMode) window.electronAPI.setCompactMode(true);
         else resizeWidget();
     }
+    if (!visible || !available) setCodexNoSession(false);
     if (!visible) return;
 
     if (!available) {
@@ -1525,20 +1539,15 @@ function renderCodexUsage(usage) {
         elements.codexWeeklyTimer, elements.codexWeeklyTimeText, elements.codexWeeklyResetsAt,
         true, 7 * 24 * 60, timeFormat, weeklyDateFormat);
 
-    // Some plans have no 5-hour window at all, only the weekly one. Say so,
-    // rather than a session "Not started" that never starts, and let the
-    // Resets items count down to the limit that does exist.
+    // The higher plans have no 5-hour window, only the weekly one. Drop the
+    // session row, compact half and bar item rather than show a session that
+    // never starts, and let Resets count down to the limit that does exist.
+    // Absent, not rolled over: a passed window still arrives, as reset.
     const noSession = !usage.session && !!usage.weekly;
-    if (noSession) {
-        elements.codexSessionPercentage.textContent = '—';
-        elements.codexSessionTimeText.textContent = 'No 5h limit';
-        elements.codexSessionTimeText.title = t('This plan has no 5-hour limit, only the weekly one.');
-        elements.codexSessionResetsAt.textContent = '';
-    }
+    setCodexNoSession(noSession);
 
     renderCompactCodex(elements.compactCodexSessionFill, elements.compactCodexSessionPct,
         usage.session, 'Session', 'codex');
-    if (noSession) elements.compactCodexSessionPct.textContent = 'Session —';
     renderCompactCodex(elements.compactCodexWeeklyFill, elements.compactCodexWeeklyPct,
         usage.weekly, 'Weekly', 'codex-weekly');
 
@@ -1660,7 +1669,8 @@ function resizeWidget() {
     const sysmonOffset = SYSMON_HEIGHT; // always shown
     const statusOffset = STATUS_HEIGHT; // service health, whichever is tracked
     const claudeOffset = claude ? 0 : -CLAUDE_ROWS_HEIGHT; // Session/Weekly rows gone
-    const codexOffset = codexShown ? CODEX_HEIGHT : 0; // rows, or Codex-only's empty state
+    const codexOffset = codexShown // rows, or the not-connected empty state
+        ? CODEX_HEIGHT - (codexNoSession ? CODEX_ROW_HEIGHT : 0) : 0;
     const totalHeight = WIDGET_HEIGHT_COLLAPSED + claudeOffset + expandedOffset + graphOffset
         + sysmonOffset + statusOffset + codexOffset;
     window.electronAPI.resizeWindow(totalHeight);
