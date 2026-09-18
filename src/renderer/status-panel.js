@@ -4,16 +4,34 @@
 
 // The theme cannot be read from a store here, so the widget passes its own
 // through on the URL. Dark is the default; only an explicit light flips it.
-const theme = new URLSearchParams(location.search).get('theme');
+const query = new URLSearchParams(location.search);
+const theme = query.get('theme');
 if (theme === 'light') document.body.classList.add('theme-light');
+// Same source, same reason: the Track setting lives in the widget's store.
+const services = query.get('services') || 'both';
+const showClaude = services !== 'codex';
+const showCodex = services !== 'claude';
 
 const els = {
+    claudeSection: document.getElementById('claudeSection'),
     overall: document.getElementById('panelOverall'),
     rows: document.getElementById('panelRows'),
     incidents: document.getElementById('panelIncidents'),
+    codexSection: document.getElementById('codexSection'),
+    codexOverall: document.getElementById('codexOverall'),
+    codexRows: document.getElementById('codexRows'),
     updated: document.getElementById('panelUpdated'),
     link: document.getElementById('panelLink'),
+    codexLink: document.getElementById('codexLink'),
 };
+
+// The widget passes its resolved language, as it does its theme (i18n.js).
+setUiLang(query.get('lang') === 'ko' ? 'ko' : 'en');
+
+els.claudeSection.style.display = showClaude ? '' : 'none';
+els.link.style.display = showClaude ? '' : 'none';
+els.codexSection.style.display = showCodex ? '' : 'none';
+els.codexLink.style.display = showCodex ? '' : 'none';
 
 // A panel left open should not go stale. main.js answers from a cached snapshot
 // it refreshes once a minute, so this is a cheap read, not a second poll of the
@@ -25,25 +43,24 @@ function formatTime(ms) {
     const d = new Date(ms);
     const hh = String(d.getHours()).padStart(2, '0');
     const mm = String(d.getMinutes()).padStart(2, '0');
-    return `Updated ${hh}:${mm}`;
+    return t('Updated {time}', { time: `${hh}:${mm}` });
 }
 
-function render(status) {
-    if (!status) return;
-
+/** One service's heading summary and component rows. */
+function renderSection(status, overallEl, rowsEl) {
     const components = status.components || [];
     const failing = components.filter((c) => c.level !== 'ok').length;
     // Deliberately not status.overallText: that names the worst component, which
     // is the very next thing on screen. A count is the one thing the rows below
     // cannot tell you at a glance.
     let summary;
-    if (status.level === 'unknown') summary = 'Status unavailable';
-    else if (!failing) summary = 'All operational';
-    else summary = `${failing} of ${components.length} affected`;
-    els.overall.textContent = summary;
-    els.overall.className = 'panel-overall ' + (status.level || 'unknown');
+    if (status.level === 'unknown') summary = t('Status unavailable');
+    else if (!failing) summary = t('All operational');
+    else summary = t('{failing} of {total} affected', { failing, total: components.length });
+    overallEl.textContent = summary;
+    overallEl.className = 'panel-overall ' + (status.level || 'unknown');
 
-    els.rows.replaceChildren(...components.map((c) => {
+    rowsEl.replaceChildren(...components.map((c) => {
         const row = document.createElement('div');
         row.className = 'panel-row';
 
@@ -56,12 +73,37 @@ function render(status) {
 
         const state = document.createElement('span');
         state.className = 'panel-row-state ' + c.level;
-        state.textContent = c.statusText;
+        state.textContent = t(c.statusText);
 
         row.append(dot, name, state);
         return row;
     }));
+}
 
+function render(status, codexStatus) {
+    const shown = [];
+    if (showClaude && status) {
+        renderSection(status, els.overall, els.rows);
+        renderIncidents(status);
+        shown.push(status);
+    }
+    if (showCodex && codexStatus) {
+        renderSection(codexStatus, els.codexOverall, els.codexRows);
+        shown.push(codexStatus);
+    }
+    if (!shown.length) return;
+
+    // One timestamp for the panel: the older of the two, so it never claims
+    // more freshness than the staler section has. An `error` alongside a usable
+    // snapshot means the last poll failed but the data is still inside its
+    // freshness window — worth saying, quietly.
+    const fetched = shown.map((s) => s.fetchedAt).filter(Boolean);
+    const failed = shown.some((s) => s.error && s.ok);
+    const at = fetched.length ? Math.min(...fetched) : null;
+    els.updated.textContent = failed ? formatTime(at) + t(' · refresh failed') : formatTime(at);
+}
+
+function renderIncidents(status) {
     const incidents = status.incidents || [];
     if (incidents.length) {
         els.incidents.style.display = '';
@@ -86,17 +128,15 @@ function render(status) {
         els.incidents.style.display = 'none';
         els.incidents.replaceChildren();
     }
-
-    // An `error` alongside a usable snapshot means the last poll failed but the
-    // data is still inside its freshness window — worth saying, quietly.
-    els.updated.textContent = status.error && status.ok
-        ? formatTime(status.fetchedAt) + ' · refresh failed'
-        : formatTime(status.fetchedAt);
 }
 
 async function refresh() {
     try {
-        render(await window.statusPanel.getServiceStatus());
+        const [status, codexStatus] = await Promise.all([
+            showClaude ? window.statusPanel.getServiceStatus() : null,
+            showCodex ? window.statusPanel.getCodexServiceStatus() : null,
+        ]);
+        render(status, codexStatus);
     } catch (err) {
         console.warn('status panel refresh failed:', err);
     }
@@ -104,6 +144,11 @@ async function refresh() {
 
 els.link.addEventListener('click', () => {
     window.statusPanel.openStatusPage();
+    window.statusPanel.close();
+});
+
+els.codexLink.addEventListener('click', () => {
+    window.statusPanel.openCodexStatusPage();
     window.statusPanel.close();
 });
 

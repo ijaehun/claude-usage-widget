@@ -76,6 +76,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Claude service health (status.claude.com)
   getServiceStatus: () => ipcRenderer.invoke('get-service-status'),
+  // Codex service health (status.openai.com)
+  getCodexServiceStatus: () => ipcRenderer.invoke('get-codex-service-status'),
   toggleStatusPanel: (payload) => ipcRenderer.invoke('toggle-status-panel', payload),
 
   // OpenAI Codex plan limits, read from Codex's local session logs

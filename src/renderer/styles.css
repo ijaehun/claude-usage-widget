@@ -2114,7 +2114,16 @@ body.bar-mode .widget-container {
 
 body.bar-mode .title-bar,
 body.bar-mode .content,
-body.bar-mode .compact-content {
+body.bar-mode .compact-content,
+body.bar-mode .login-container,
+body.bar-mode .loading-container,
+body.bar-mode .no-usage-container {
+    display: none !important;
+}
+
+/* Docking before login used to strand the app: the login screen filled the
+   34px strip and pushed the bar, undock button included, out of view. */
+body.logged-out .dock-btn {
     display: none !important;
 }
 
@@ -2259,17 +2268,19 @@ body.bar-mode .compact-content {
    the 560px widget window never matches these. Each breakpoint sits just above
    the widest the next-wider tier can get (Fable present, "3 services", both
    countdowns "Not started"), so no width falls between two tiers and clips.
-   1150 is pinned: 1151 is the portrait monitor, and it fits the 1320 tier. */
-@media (max-width: 1320px) {
+   1150 is pinned: 1151 is the portrait monitor, and it fits the 1340 tier.
+   The system dot (the system panel's one control) moved the first tier up
+   from 1320 and took each tier's meters down a step to pay for itself. */
+@media (max-width: 1340px) {
     body.bar-mode .bar-content { padding: 0 8px; gap: 6px; }
     body.bar-mode .bar-group { gap: 9px; }
-    body.bar-mode .bar-meter { width: 40px; }
+    body.bar-mode .bar-meter { width: 36px; }
 }
 
 @media (max-width: 1150px) {
     body.bar-mode .bar-brand { display: none; }
     body.bar-mode .bar-group { gap: 7px; }
-    body.bar-mode .bar-meter { width: 32px; }
+    body.bar-mode .bar-meter { width: 30px; }
 }
 
 /* Last resort. The system fills stay colour-coded (blue/green/amber/pink), so
@@ -2278,6 +2289,7 @@ body.bar-mode .compact-content {
     body.bar-mode .bar-group-system .bar-key { display: none; }
     body.bar-mode .bar-group-system .bar-item { gap: 4px; }
     body.bar-mode .bar-val { min-width: 26px; }
+    body.bar-mode .bar-meter { width: 28px; }
     /* Buys the last ~12px, so a 1080p portrait monitor at 125% (864px) fits. */
     body.bar-mode .bar-content { padding: 0 6px; gap: 4px; }
 }
@@ -2291,15 +2303,18 @@ body.bar-mode .compact-content {
    groups stay in the same shape. Measured, not estimated — re-run the harness
    after touching these.
    The first tier starts well above the base 1320: with Session/Weekly/Resets
-   spelled out the full-size strip wants up to ~1765px, which a 1920 laptop at
-   125% (1536px) cannot give. Between the two it borrows the base tier's
-   spacing, bounded below so the 1150 tier's tighter gap still wins there. */
-@media (min-width: 1321px) and (max-width: 1800px) {
+   spelled out and both status dots, the full-size strip wants up to ~1805px,
+   which a 1920 laptop at 125% (1536px) cannot give. 1840 is that fit; the
+   Codex and system dots moved it up from 1800, and took the meters and value
+   columns below down a few px.
+   Between the two it borrows the base tier's spacing, bounded below so the
+   1150 tier's tighter gap still wins there. */
+@media (min-width: 1321px) and (max-width: 1840px) {
     body.bar-mode.has-codex .bar-content { padding: 0 8px; gap: 6px; }
     body.bar-mode.has-codex .bar-group { gap: 9px; }
 }
 
-@media (max-width: 1800px) {
+@media (max-width: 1840px) {
     body.bar-mode.has-codex .bar-group-claude .bar-brand { display: none; }
     body.bar-mode.has-codex .bar-group-codex .bar-meter { display: none; }
     body.bar-mode.has-codex .bar-meter { width: 28px; }
@@ -2317,8 +2332,8 @@ body.bar-mode .compact-content {
    shrink by about what Codex's reappearing keys cost — so the meters and
    value columns shrink here too. */
 @media (max-width: 1320px) {
-    body.bar-mode.has-codex .bar-meter { width: 24px; }
-    body.bar-mode.has-codex .bar-val { min-width: 26px; }
+    body.bar-mode.has-codex .bar-meter { width: 18px; }
+    body.bar-mode.has-codex .bar-val { min-width: 24px; }
 }
 
 @media (max-width: 1150px) {
@@ -2329,7 +2344,7 @@ body.bar-mode .compact-content {
 
 @media (max-width: 1040px) {
     body.bar-mode.has-codex .bar-reset .bar-key { display: none; }
-    body.bar-mode.has-codex .bar-meter { width: 18px; }
+    body.bar-mode.has-codex .bar-meter { width: 14px; }
     body.bar-mode.has-codex .bar-group { gap: 5px; }
     body.bar-mode.has-codex .bar-item { gap: 4px; }
 }
@@ -2362,3 +2377,174 @@ body.theme-light .bar-icon-btn:hover { color: #2a2a2a; }
     from { transform: rotate(0deg); }
     to   { transform: rotate(360deg); }
 }
+
+/* ===========================================================================
+   Which services to track (settings.services: both / claude / codex).
+   body.no-claude and body.no-codex strip a service from every view at once;
+   the height maths in resizeWidget() and main.js getCompactHeight() mirror
+   exactly what these rules hide.
+   =========================================================================== */
+
+body.no-claude .claude-row,
+body.no-claude #graphSection,
+body.no-claude #graphBtn,
+body.no-claude #compactStatusDot,
+body.no-codex #compactCodexStatusDot,
+body.no-claude .bar-group-claude,
+body.no-claude #logoutBtn,
+body.no-claude #orgSelectorCol,
+body.no-codex #chatgptBtn {
+    display: none !important;
+}
+
+/* With Claude's group gone, Codex's is the first thing in the strip; its
+   divider would separate it from nothing. */
+body.no-claude .bar-group.bar-group-codex {
+    border-left: none;
+    padding-left: 0;
+}
+
+/* First-run chooser */
+.service-chooser {
+    width: 100%;
+    text-align: center;
+}
+
+.service-chooser h3 {
+    color: #e0e0e0;
+    font-size: 14px;
+    margin-bottom: 2px;
+}
+
+.service-chooser p {
+    color: #a0a0a0;
+    font-size: 11px;
+    margin: 0 0 14px;
+}
+
+.service-choices {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.service-choice {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e0e0e0;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.service-choice:hover {
+    border-color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.15);
+}
+
+body.theme-light .service-chooser h3,
+body.theme-light .service-choice { color: #2a2a2a; }
+body.theme-light .service-chooser p { color: #606070; }
+body.theme-light .service-choice { border-color: rgba(0, 0, 0, 0.18); }
+
+/* Codex-only with no Codex data: stands in for the two rows it replaces. */
+.codex-empty {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    height: 66px;
+}
+
+.codex-section.empty .usage-section { display: none; }
+.codex-section.empty .codex-empty { display: flex; }
+
+/* Nothing under the column headers then; hidden, not removed, so the widget
+   height sums still hold. */
+body.no-claude #mainContent:has(.codex-section.empty) .usage-headers {
+    visibility: hidden;
+}
+
+.codex-empty-text {
+    color: #a0a0a0;
+    font-size: 11px;
+}
+
+body.theme-light .codex-empty-text { color: #606070; }
+
+/* Compact reset countdown, trailing each row. */
+.compact-reset {
+    width: 44px;
+    flex-shrink: 0;
+    text-align: right;
+    color: #a0a0b0;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.compact-reset.idle { opacity: 0.4; }
+
+body.theme-light .compact-reset { color: #505060; }
+
+/* "Not started" mirrored into the bar keeps the widget's dimmed look. */
+.bar-val.idle { opacity: 0.5; }
+
+/* The system dot: one per view, opens the system panel (wireSysmonPanel).
+   Widget: in the section's left padding, level with the CPU row, so the
+   section's height (SYSMON_HEIGHT) is untouched. */
+.sysmon-section { position: relative; }
+
+.sysmon-dot-btn,
+.compact-sys-dot {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-app-region: no-drag;
+}
+
+.sysmon-dot-btn {
+    position: absolute;
+    left: 0;
+    top: 10px;          /* the section's top padding */
+    width: 18px;        /* its left padding, widened below to make room */
+    height: 22px;       /* one sysmon row */
+}
+
+/* 12px of left padding put the dot flush against "CPU"; 18 gives it a gap.
+   Horizontal only, so SYSMON_HEIGHT holds. */
+.sysmon-section { padding-left: 18px; }
+
+.compact-sys-dot { margin-right: 5px; vertical-align: middle; }
+
+/* Language picker, in the settings header's empty middle. The header is a
+   window drag region; the picker has to opt out to be clickable. */
+.settings-lang {
+    margin-left: auto;
+    margin-right: 8px;
+    -webkit-app-region: no-drag;
+}
+
+/* Codex service status. Compact: its dot beside Claude's in the one item. */
+.compact-status { gap: 4px; }
+
+/* Widget row: a thin rule between Claude's chips and the Codex chip. */
+.status-chip-sep {
+    width: 1px;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+body.theme-light .status-chip-sep { background: rgba(0, 0, 0, 0.15); }
+
+/* Both groups in the strip: Codex's status is the dot alone, whatever is
+   wrong. Its label would spend the strip's last few pixels at 1151; the
+   tooltip and the panel carry the detail. Codex-only has room, and keeps it. */
+body.has-codex .bar-group-codex .bar-status-text { display: none !important; }

@@ -44,6 +44,10 @@ const FADE_OUT_MS = 160;
 
 let panel = null;
 let closedAt = 0;
+// Which page is (or last was) showing: 'status' or 'system'. Two indicators
+// can share the one window, so toggling is per kind.
+let openKind = null;
+let closedKind = null;
 
 function isOpen() {
   return !!panel && !panel.isDestroyed();
@@ -83,8 +87,11 @@ function placement(parentWindow, anchor, height) {
  * @param {BrowserWindow} parentWindow
  * @param {{x: number, y: number, width: number, height: number}} anchor - in parent CSS px
  * @param {'light'|'dark'} theme
+ * @param {'both'|'claude'|'codex'} services - which sections to show
+ * @param {'en'|'ko'} lang - the widget's resolved UI language
+ * @param {'status'|'system'} kind - service status, or the machine's CPU/GPU/RAM
  */
-async function open(parentWindow, anchor, theme) {
+async function open(parentWindow, anchor, theme, services, lang, kind) {
   if (!parentWindow || parentWindow.isDestroyed()) return;
   close();
 
@@ -125,8 +132,12 @@ async function open(parentWindow, anchor, theme) {
     if (panel === local) panel = null;
   });
 
-  const url = `file://${path.join(__dirname, 'renderer', 'status-panel.html')}` +
-    `?theme=${theme === 'light' ? 'light' : 'dark'}`;
+  openKind = kind;
+  const page = kind === 'system' ? 'system-panel.html' : 'status-panel.html';
+  const url = `file://${path.join(__dirname, 'renderer', page)}` +
+    `?theme=${theme === 'light' ? 'light' : 'dark'}` +
+    `&services=${['claude', 'codex'].includes(services) ? services : 'both'}` +
+    `&lang=${lang === 'ko' ? 'ko' : 'en'}`;
   await local.loadURL(url);
   if (local.isDestroyed()) return;
 
@@ -194,6 +205,7 @@ function dismiss() {
   const local = panel;
   panel = null;
   closedAt = Date.now();
+  closedKind = openKind;
   local.setIgnoreMouseEvents(true);
   fadeWindow(local, local.getOpacity(), 0, FADE_OUT_MS).then(() => {
     if (!local.isDestroyed()) local.destroy();
@@ -204,15 +216,19 @@ function dismiss() {
  * Open, or close if it is already showing. Returns whether the panel is open
  * afterwards, so the renderer can reflect the state on the indicator.
  */
-async function toggle(parentWindow, anchor, theme) {
+async function toggle(parentWindow, anchor, theme, services, lang, kind = 'status') {
   if (isOpen()) {
+    const same = openKind === kind;
     dismiss();
-    return false;
+    // A click on the other kind of indicator swaps the page instead.
+    if (same) return false;
   }
   // Distinguish a real second click from the click that just dismissed the
   // panel via blur.
-  if (Date.now() - closedAt < REOPEN_GUARD_MS) return false;
-  await open(parentWindow, anchor, theme);
+  // Only for the same kind: blur closing the status page must not swallow the
+  // click that asked for the system page.
+  if (closedKind === kind && Date.now() - closedAt < REOPEN_GUARD_MS) return false;
+  await open(parentWindow, anchor, theme, services, lang, kind);
   return isOpen();
 }
 

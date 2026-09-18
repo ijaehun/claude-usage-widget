@@ -20,21 +20,40 @@
          window, so its height would just report whatever the window already is
          and the panel could never size itself to its content. -->
     <div class="panel" id="panel">
-        <div class="panel-head">
-            <span class="panel-title">Claude service status</span>
-            <span class="panel-overall" id="panelOverall">Checking…</span>
+        <!-- One section per tracked service; the ?services= query hides the
+             other. -->
+        <div class="panel-section" id="claudeSection">
+            <div class="panel-head">
+                <span class="panel-title" data-i18n>Claude service status</span>
+                <span class="panel-overall" id="panelOverall" data-i18n>Checking…</span>
+            </div>
+
+            <div class="panel-rows" id="panelRows"></div>
+
+            <!-- Only rendered when there is something unresolved. -->
+            <div class="panel-incidents" id="panelIncidents" style="display: none;"></div>
         </div>
 
-        <div class="panel-rows" id="panelRows"></div>
+        <!-- status.openai.com sends no incident list, so this section is rows
+             only. -->
+        <div class="panel-section" id="codexSection">
+            <div class="panel-head">
+                <span class="panel-title codex" data-i18n>Codex service status</span>
+                <span class="panel-overall" id="codexOverall" data-i18n>Checking…</span>
+            </div>
 
-        <!-- Only rendered when there is something unresolved. -->
-        <div class="panel-incidents" id="panelIncidents" style="display: none;"></div>
+            <div class="panel-rows" id="codexRows"></div>
+        </div>
 
         <div class="panel-foot">
             <span class="panel-updated" id="panelUpdated">--</span>
-            <button class="panel-link" id="panelLink">status.claude.com →</button>
+            <span class="panel-links">
+                <button class="panel-link" id="panelLink">status.claude.com →</button>
+                <button class="panel-link" id="codexLink">status.openai.com →</button>
+            </span>
         </div>
     </div>
+    <script src="i18n.js"></script>
     <script src="status-panel.js"></script>
 </body>
 

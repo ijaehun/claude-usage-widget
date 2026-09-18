@@ -179,6 +179,85 @@ html, body {
     text-decoration: underline;
 }
 
+/* --- Codex section -------------------------------------------------------- */
+
+/* The second section needs its own line above; the first sits under nothing. */
+.panel-section + .panel-section {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Codex's grey, as in the widget's Codex bars, so the two headings are told
+   apart before they are read. */
+.panel-title.codex { color: #a1a1aa; }
+
+.panel-links {
+    display: inline-flex;
+    gap: 10px;
+}
+
+body.theme-light .panel-section + .panel-section { border-color: rgba(0, 0, 0, 0.08); }
+body.theme-light .panel-title.codex { color: #71717a; }
+
+/* ===========================================================================
+   System panel (system-panel.html) — CPU / GPU / VRAM / RAM. Same popup and
+   surface as the status panel; the meter colours match the widget's rows.
+   =========================================================================== */
+
+.panel-title.system { color: #38bdf8; }
+
+.sys-row + .sys-row { margin-top: 9px; }
+
+.sys-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.sys-name {
+    color: #d4d4d4;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.sys-val {
+    color: #e5e5e5;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.sys-val.hot { color: #f87171; }
+.sys-val.na  { color: #6b7280; }
+
+.sys-meter {
+    height: 5px;
+    margin: 4px 0 3px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.sys-fill { height: 100%; border-radius: 3px; }
+.sys-fill.cpu  { background: linear-gradient(90deg, #38bdf8 0%, #7dd3fc 100%); }
+.sys-fill.gpu  { background: linear-gradient(90deg, #34d399 0%, #6ee7b7 100%); }
+.sys-fill.vram { background: linear-gradient(90deg, #fbbf24 0%, #fcd34d 100%); }
+.sys-fill.ram  { background: linear-gradient(90deg, #f472b6 0%, #f9a8d4 100%); }
+.sys-fill.hot  { background: linear-gradient(90deg, #ef4444 0%, #f87171 100%); }
+
+.sys-detail {
+    color: #8a8a8a;
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.theme-light .panel-title.system { color: #0284c7; }
+body.theme-light .sys-name { color: #2a2a2a; }
+body.theme-light .sys-val { color: #1a1a1a; }
+body.theme-light .sys-val.hot { color: #dc2626; }
+body.theme-light .sys-meter { background: rgba(0, 0, 0, 0.08); }
+body.theme-light .sys-detail { color: #7a7a7a; }
+
 /* ===========================================================================
    Light theme. Set by status-panel.js from the ?theme= query, which the widget
    passes through from its own setting — the panel has no access to the store.

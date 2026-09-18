@@ -119,6 +119,10 @@ const COMPACT_WIDTH = 290;
 const COMPACT_HEIGHT = 105;
 const COMPACT_ROW_HEIGHT = 28; // extra height per optional row (Fable)
 const COMPACT_SYSMON_HEIGHT = 22; // the always-on CPU/GPU/RAM strip
+// What the Session + Weekly rows really occupy (21px each with the gap),
+// measured. Not 2 * COMPACT_ROW_HEIGHT: that one carries slack per optional
+// row, and taking it off twice left Codex-only compact 2px short.
+const COMPACT_CLAUDE_ROWS_HEIGHT = 42;
 // Docked bar mode: a full-width strip along a screen edge, registered as a
 // Windows appbar so maximized windows stop at it instead of covering it.
 const BAR_HEIGHT = 34;
@@ -139,11 +143,21 @@ const HISTORY_RETENTION_DAYS = 8;
 // is the per-optional-row growth.
 function getCompactHeight() {
   const data = store.get('latestUsageData');
+  const services = store.get('settings.services', 'both');
+  const claude = services !== 'codex';
   let height = COMPACT_HEIGHT + COMPACT_SYSMON_HEIGHT;
-  if (data?.seven_day_fable) height += COMPACT_ROW_HEIGHT;
-  // Codex's two windows share one split row; shown only when there is Codex
-  // usage on this machine, which the renderer decides from the same sample.
-  if (codexUsage.getUsage().available) height += COMPACT_ROW_HEIGHT;
+  if (claude) {
+    if (data?.seven_day_fable) height += COMPACT_ROW_HEIGHT;
+  } else {
+    // Codex-only: Session and Weekly are gone (renderer's body.no-claude).
+    height -= COMPACT_CLAUDE_ROWS_HEIGHT;
+  }
+  // Codex's two windows share one split row; shown when there is Codex usage
+  // on this machine — which the renderer decides from the same sample — and
+  // always when Codex is the only thing tracked. Mirrors renderCodexUsage().
+  if (services !== 'claude' && (!claude || codexUsage.getUsage().available)) {
+    height += COMPACT_ROW_HEIGHT;
+  }
   return height;
 }
 const CHART_DAYS = 7;
@@ -334,6 +348,9 @@ function showMainWindowSmart() {
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
   showWithFade();
+  // Hiding to the tray while docked gave the strip back (the 'close'
+  // handler); showing again takes it back.
+  if (store.get('settings.barMode', false) && !appbar.isDocked()) applyBarMode(true);
 }
 
 function createMainWindow() {
@@ -411,6 +428,14 @@ function createMainWindow() {
 
     if (hasTrayIcon()) {
       event.preventDefault();
+      // Hidden, a docked bar would keep its strip of the desktop reserved with
+      // nothing drawn in it — and an installer closing the running app lands
+      // here, then force-kills it, leaving that strip dead. Release it first;
+      // settings.barMode is untouched, so showMainWindowSmart() docks again.
+      if (appbar.isDocked()) {
+        appbar.undock();
+        trayFlyout.stop();
+      }
       hideWithFade();
       return;
     }
@@ -1201,8 +1226,10 @@ ipcMain.handle('set-window-position', (event, { x, y }) => {
 });
 
 ipcMain.on('open-external', (event, url) => {
-  // Trust boundary enforcement: duplicate allowlist check in main process
-  const allowedDomains = ['claude.ai', 'claude.com', 'github.com'];
+  // Trust boundary enforcement: duplicate allowlist check in main process.
+  // status.openai.com is the status panel's Codex link; the exact host, not
+  // openai.com, since nothing else of OpenAI's is ever opened from here.
+  const allowedDomains = ['claude.ai', 'claude.com', 'github.com', 'status.openai.com'];
   try {
     const parsedUrl = new URL(url);
     const isAllowed = allowedDomains.some(domain => 
@@ -1225,6 +1252,8 @@ ipcMain.handle('get-system-stats', () => systemStats.getStats());
 // Claude's own service health, polled from the public status page. Served from
 // a cached snapshot, so this is as cheap as the system-stats read above.
 ipcMain.handle('get-service-status', () => serviceStatus.getStatus());
+// Codex's, from status.openai.com — same module, same cache-only read.
+ipcMain.handle('get-codex-service-status', () => serviceStatus.getCodexStatus());
 
 // OpenAI Codex plan limits, parsed from Codex's local session logs. Also served
 // from a cached sample; see src/codex-usage.js for where the numbers come from.
@@ -1270,9 +1299,12 @@ ipcMain.handle('chatgpt-disconnect', () => chatgptUsage.disconnect());
 // The status indicator's click-toggled detail popup. The anchor rect arrives in
 // the widget's own CSS pixels; src/status-panel.js turns that into a screen
 // position. Returns whether the panel ended up open.
-ipcMain.handle('toggle-status-panel', (event, { anchor, theme } = {}) => {
+ipcMain.handle('toggle-status-panel', (event, { anchor, theme, lang, kind } = {}) => {
   if (!anchor || !mainWindow || mainWindow.isDestroyed()) return false;
-  return statusPanel.toggle(mainWindow, anchor, theme);
+  // Which sections the panel shows follows the Track setting.
+  const services = store.get('settings.services', 'both') || 'both';
+  // The same popup also carries the CPU/GPU/VRAM/RAM detail page.
+  return statusPanel.toggle(mainWindow, anchor, theme, services, lang, kind === 'system' ? 'system' : 'status');
 });
 
 // Esc, and following the link out. User-facing, so it fades rather than
@@ -1388,7 +1420,11 @@ function applyBarMode(enabled, edge) {
   }
 
   // Remember where to come back to before the appbar takes over the bounds.
-  if (!appbar.isDocked()) {
+  // Kept if already set: re-docking after a hide to the tray (or a restart
+  // while docked) starts from the strip's own bounds, which are not where the
+  // widget should land on undock. Undocking deletes it, so a real first dock
+  // always records afresh.
+  if (!appbar.isDocked() && !store.get('preDockBounds')) {
     store.set('preDockBounds', mainWindow.getBounds());
   }
 
@@ -1468,7 +1504,11 @@ ipcMain.handle('get-settings', () => {
     refreshInterval: store.get('settings.refreshInterval', '300'),
     graphVisible: store.get('settings.graphVisible', false),
     expandedOpen: store.get('settings.expandedOpen', false),
-    showTrayStats: store.get('settings.showTrayStats', false)
+    showTrayStats: store.get('settings.showTrayStats', false),
+    // 'both' | 'claude' | 'codex'; null until the first-run chooser answers.
+    services: store.get('settings.services', null),
+    // 'auto' (follow Windows) | 'en' | 'ko'
+    language: store.get('settings.language', 'auto')
   };
 });
 
@@ -1492,6 +1532,14 @@ ipcMain.handle('save-settings', (event, settings) => {
   // Guarded: settings objects cached by the renderer before this field
   // existed would otherwise overwrite the stored value with undefined.
   store.set('settings.showTrayStats', settings.showTrayStats);
+  // Only ever set, never cleared: electron-store throws on undefined, and a
+  // settings object cached before the chooser ran has no value to give.
+  if (['both', 'claude', 'codex'].includes(settings.services)) {
+    store.set('settings.services', settings.services);
+  }
+  if (['auto', 'en', 'ko'].includes(settings.language)) {
+    store.set('settings.language', settings.language);
+  }
 
   const isPortable = process.platform === 'win32' && !!process.env.PORTABLE_EXECUTABLE_FILE;
 
@@ -1547,8 +1595,9 @@ ipcMain.handle('save-settings', (event, settings) => {
 // that Claude.ai/Cloudflare no longer blocks it.
 //
 // SECURITY: Navigation is restricted to trusted domains (claude.ai and OAuth
-// providers) to prevent phishing attacks. Popup windows are blocked. Current
-// URL is displayed in the window title bar for transparency.
+// providers) to prevent phishing attacks. Popups are allowed only toward those
+// same domains, under the same restriction. Current URL is displayed in the
+// window title bar for transparency.
 ipcMain.handle('detect-session-key', async () => {
   // Clear any leftover sessionKey cookie
   try {
@@ -1576,24 +1625,40 @@ ipcMain.handle('detect-session-key', async () => {
       'login.microsoftonline.com'
     ];
 
-    loginWin.webContents.on('will-navigate', (event, url) => {
+    // Google sign-in hops through the user's country domain mid-flow
+    // (accounts.google.co.kr/accounts/SetSID for a Korean account), so
+    // accounts.google.com alone closes the popup halfway through.
+    const GOOGLE_ACCOUNTS_HOST = /^accounts\.google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})$/;
+
+    const isTrustedLoginUrl = (url) => {
       try {
         const hostname = new URL(url).hostname;
-        const isAllowed = allowedLoginDomains.some(domain =>
+        return GOOGLE_ACCOUNTS_HOST.test(hostname) || allowedLoginDomains.some(domain =>
           hostname === domain || hostname.endsWith('.' + domain)
         );
-        if (!isAllowed) {
+      } catch (err) {
+        return false;
+      }
+    };
+
+    // Sign-in URLs carry session tokens in their query strings; log the host only.
+    const hostOf = (url) => {
+      try { return new URL(url).host; } catch (err) { return '(invalid URL)'; }
+    };
+
+    // Applied to the login window and to any sign-in popup it opens.
+    const guardNavigation = (win) => {
+      win.webContents.on('will-navigate', (event, url) => {
+        if (!isTrustedLoginUrl(url)) {
           event.preventDefault();
-          console.warn('[Security] Blocked login navigation to untrusted domain:', url);
+          console.warn('[Security] Blocked login navigation to untrusted domain:', hostOf(url));
         } else {
           // Update title bar to show current URL (read-only)
-          loginWin.setTitle(`Claude Login - ${url}`);
+          win.setTitle(`Claude Login - ${url}`);
         }
-      } catch (err) {
-        event.preventDefault();
-        console.warn('[Security] Blocked login navigation with invalid URL:', url);
-      }
-    });
+      });
+    };
+    guardNavigation(loginWin);
 
     // Update title on OAuth redirects and in-page navigation
     loginWin.webContents.on('did-navigate', (event, url) => {
@@ -1604,10 +1669,38 @@ ipcMain.handle('detect-session-key', async () => {
       loginWin.setTitle(`Claude Login - ${url}`);
     });
 
-    // Security: block popup windows from login page
-    loginWin.webContents.setWindowOpenHandler(() => {
-      console.warn('[Security] Blocked popup window attempt from login page');
+    // Popups: claude.ai now runs its provider sign-in (Google) in a popup, and
+    // denying it outright surfaces on the page as a generic "error during
+    // login". Allow it only toward the same trusted domains; about:blank is
+    // allowed because a popup is often opened blank and pointed at the
+    // provider afterwards, and the did-navigate check below closes it if it
+    // lands anywhere else.
+    loginWin.webContents.setWindowOpenHandler(({ url }) => {
+      if (url === 'about:blank' || isTrustedLoginUrl(url)) {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            parent: loginWin,
+            width: 500,
+            height: 650,
+            autoHideMenuBar: true,
+            webPreferences: { nodeIntegration: false, contextIsolation: true }
+          }
+        };
+      }
+      console.warn('[Security] Blocked popup window from login page:', hostOf(url));
       return { action: 'deny' };
+    });
+
+    loginWin.webContents.on('did-create-window', (popup) => {
+      guardNavigation(popup);
+      popup.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      popup.webContents.on('did-navigate', (event, url) => {
+        if (!isTrustedLoginUrl(url)) {
+          console.warn('[Security] Closed login popup on untrusted domain:', hostOf(url));
+          popup.close();
+        }
+      });
     });
 
     // Listen for sessionKey cookie being set after login

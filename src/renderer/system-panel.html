@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'none';
+        script-src 'self';
+        style-src 'self';
+        font-src 'self';
+        img-src 'self' data:;
+        connect-src 'none';
+    ">
+    <title>System</title>
+    <!-- The status panel's stylesheet: same popup, same surface, a different
+         page in it. The system-specific rules live at the end of that file. -->
+    <link rel="stylesheet" href="status-panel.css">
+</head>
+
+<body>
+    <!-- #panel is what status-panel.js measures, as for the status page. -->
+    <div class="panel" id="panel">
+        <div class="panel-head">
+            <span class="panel-title system">System</span>
+            <span class="panel-overall" id="sysUpdated"></span>
+        </div>
+        <div class="panel-rows" id="sysRows"></div>
+    </div>
+    <script src="system-panel.js"></script>
+</body>
+
+</html>

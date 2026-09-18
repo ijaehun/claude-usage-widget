@@ -24,31 +24,39 @@
             <div class="title-bar" id="titleBar">
                 <div class="title">
                     <img src="../../assets/logo.png" alt="Logo" class="app-logo">
-                    <span>Claude Usage</span>
+                    <span id="appTitle">Claude Usage</span>
                 </div>
                 <div class="controls">
-                    <button class="control-btn settings-btn" id="settingsBtn" title="Settings">⚙️</button>
-                    <button class="control-btn refresh-btn" id="refreshBtn" title="Refresh">
+                    <!-- Line icon like its neighbours, not the ⚙️ emoji it was: an
+                         emoji is drawn in the font's own grey and ignores
+                         currentColor, which all but vanished on the light theme. -->
+                    <button class="control-btn settings-btn" id="settingsBtn" title="Settings" data-i18n-title>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                        </svg>
+                    </button>
+                    <button class="control-btn refresh-btn" id="refreshBtn" title="Refresh" data-i18n-title>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <path d="M23 4v6h-6M1 20v-6h6" />
                             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                         </svg>
                     </button>
-                    <button class="control-btn graph-btn" id="graphBtn" title="Toggle Usage Graph">
+                    <button class="control-btn graph-btn" id="graphBtn" title="Toggle Usage Graph" data-i18n-title>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                         </svg>
                     </button>
-                    <button class="control-btn dock-btn" id="dockBtn" title="Dock to screen edge">
+                    <button class="control-btn dock-btn" id="dockBtn" title="Dock to screen edge" data-i18n-title>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="16" width="18" height="5" rx="1" fill="currentColor" stroke="none" />
                             <path d="M12 3v9" />
                             <polyline points="8 8 12 12 16 8" />
                         </svg>
                     </button>
-                    <button class="control-btn minimize-btn" id="minimizeBtn" title="Minimise to System Tray">−</button>
-                    <button class="control-btn close-btn" id="closeBtn" title="Exit Application">×</button>
+                    <button class="control-btn minimize-btn" id="minimizeBtn" title="Minimise to System Tray" data-i18n-title>−</button>
+                    <button class="control-btn close-btn" id="closeBtn" title="Exit Application" data-i18n-title>×</button>
                 </div>
             </div>
 
@@ -56,7 +64,7 @@
             <!-- Loading State -->
             <div class="loading-container" id="loadingContainer">
                 <div class="spinner"></div>
-                <p>Loading usage data...</p>
+                <p data-i18n>Loading usage data...</p>
             </div>
 
             <!-- Login -->
@@ -71,33 +79,49 @@
                             </svg>
                         </div>
                         <div class="step-text">
-                            <h3>Connect to Claude.ai</h3>
-                            <p>Log in to your Claude account</p>
-                            <p class="step-hint">If auto-login doesn't work, use Manual to paste your session key — Claude.ai may block embedded browsers.</p>
+                            <h3 data-i18n>Connect to Claude.ai</h3>
+                            <p data-i18n>Log in to your Claude account</p>
+                            <p class="step-hint" data-i18n>If auto-login doesn't work, use Manual to paste your session key — Claude.ai may block embedded browsers.</p>
+                            <p class="step-hint"><span data-i18n>Only tracking Codex?</span> <a href="#" class="open-browser-link" id="changeServicesLink" data-i18n>Change what to track</a></p>
                             <p class="step-error" id="autoDetectError"></p>
                         </div>
-                        <button class="auto-detect-btn" id="autoDetectBtn">Log in</button>
-                        <button class="next-step-btn" id="nextStepBtn">Manual →</button>
+                        <button class="auto-detect-btn" id="autoDetectBtn" data-i18n>Log in</button>
+                        <button class="next-step-btn" id="nextStepBtn" data-i18n>Manual →</button>
                     </div>
 
                     <div class="login-step2" id="loginStep2" style="display: none;">
                         <div class="session-key-form">
                             <div class="session-key-header">
-                                <h3>Paste your Session Key</h3>
+                                <h3 data-i18n>Paste your Session Key</h3>
                                 <p>
-                                    <a href="#" id="openBrowserLink" class="open-browser-link">Open claude.ai</a>
+                                    <a href="#" id="openBrowserLink" class="open-browser-link" data-i18n>Open claude.ai</a>
                                     → <code>F12</code> → Application → Cookies → <code>sessionKey</code>
                                 </p>
                             </div>
                             <div class="session-key-input-row">
                                 <input type="password" id="sessionKeyInput" placeholder="sk-ant-sid01-..." spellcheck="false" autocomplete="off">
-                                <button class="connect-btn" id="connectBtn">Connect</button>
+                                <button class="connect-btn" id="connectBtn" data-i18n>Connect</button>
                             </div>
                             <div class="session-key-footer">
                                 <p class="session-key-error" id="sessionKeyError"></p>
-                                <button class="back-step-btn" id="backStepBtn">← Back</button>
+                                <button class="back-step-btn" id="backStepBtn" data-i18n>← Back</button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- First run: which services to track. Asked before any login,
+                 so a Codex-only user is never sent through Claude's. Shares the
+                 login screen's container class, so bar mode hides it too. -->
+            <div class="login-container" id="serviceChooser" style="display: none;">
+                <div class="service-chooser">
+                    <h3 data-i18n>What do you want to track?</h3>
+                    <p data-i18n>You can change this later in Settings.</p>
+                    <div class="service-choices">
+                        <button class="service-choice" data-services="claude">Claude</button>
+                        <button class="service-choice" data-services="codex">Codex</button>
+                        <button class="service-choice" data-services="both" data-i18n>Both</button>
                     </div>
                 </div>
             </div>
@@ -119,7 +143,7 @@
             <div class="content" id="mainContent" style="display: none;">
 
                 <!-- Compact toggle chevron — fixed position, does not move with expand -->
-                <button class="compact-collapse-btn" id="compactCollapseBtn" title="Compact mode" style="display: none;">
+                <button class="compact-collapse-btn" id="compactCollapseBtn" title="Compact mode" data-i18n-title style="display: none;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
 
@@ -133,7 +157,7 @@
                 </div>
 
                 <!-- Session Usage -->
-                <div class="usage-section">
+                <div class="usage-section claude-row">
                     <span class="usage-label">Current Session</span>
                     <div class="usage-bar-group">
                         <div class="progress-bar">
@@ -153,7 +177,7 @@
                 </div>
 
                 <!-- Weekly Usage -->
-                <div class="usage-section">
+                <div class="usage-section claude-row">
                     <span class="usage-label">Weekly Limit</span>
                     <div class="usage-bar-group">
                         <div class="progress-bar">
@@ -173,14 +197,14 @@
                 </div>
 
                 <!-- Expand Toggle -->
-                <div class="expand-toggle" id="expandToggle">
+                <div class="expand-toggle claude-row" id="expandToggle">
                     <svg class="expand-arrow" id="expandArrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <polyline points="6 9 12 15 18 9" />
                     </svg>
                 </div>
 
                 <!-- Expandable Details -->
-                <div class="expand-section" id="expandSection" style="display: none;">
+                <div class="expand-section claude-row" id="expandSection" style="display: none;">
                     <div id="extraRows"></div>
                 </div>
 
@@ -227,6 +251,14 @@
                         <div class="timer-text" id="codexWeeklyTimeText">--:--</div>
                         <div class="resets-at-text" id="codexWeeklyResetsAt">--</div>
                     </div>
+                    <!-- Codex-only with nothing to show yet: the rows would be
+                         the whole widget, so say why and offer the fix instead
+                         of hiding them. Sized to the two rows it replaces, so
+                         CODEX_HEIGHT holds either way. -->
+                    <div class="codex-empty" id="codexEmpty">
+                        <span class="codex-empty-text" id="codexEmptyText">No Codex usage on this PC yet.</span>
+                        <button class="chatgpt-btn" id="codexConnectBtn">Connect ChatGPT</button>
+                    </div>
                 </div>
 
                 <!-- Claude service health (status.claude.com). Deliberately one
@@ -236,13 +268,20 @@
                      tooltip, and the row clicks through to the status page. -->
                 <div class="status-section" id="statusSection">
                     <button class="status-row" id="statusRow" title="Claude service status">
-                        <span class="status-label">Status</span>
+                        <span class="status-label" data-i18n>Status</span>
                         <span class="status-chips" id="statusChips"></span>
                         <span class="status-text" id="statusText">Checking…</span>
                     </button>
                 </div>
                 <!-- System Monitor (local machine CPU / GPU / RAM) -->
                 <div class="sysmon-section" id="sysmonSection">
+                    <!-- The one control for the system panel, as the status
+                         dot is for the service panel: green, or red once any
+                         resource is past the hot threshold. In the section's
+                         left padding, so it adds no height. -->
+                    <button class="sysmon-dot-btn" id="sysmonDotBtn" title="System details" data-i18n-title>
+                        <span class="status-dot ok" id="sysmonDot"></span>
+                    </button>
                     <div class="sysmon-row">
                         <span class="sysmon-label" id="cpuLabel" title="CPU">CPU</span>
                         <div class="sysmon-bar">
@@ -287,11 +326,14 @@
             <!-- Compact Content -->
             <div class="compact-content" id="compactContent" style="display: none;">
                 <!-- Expand chevron — right edge, returns to normal mode -->
-                <button class="compact-expand-btn" id="compactExpandBtn" title="Normal mode">
+                <button class="compact-expand-btn" id="compactExpandBtn" title="Normal mode" data-i18n-title>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
                 <div class="compact-rows">
-                    <div class="compact-row">
+                    <!-- The trailing .compact-reset on each row is the time left
+                         until that limit resets — the one number compact used
+                         to drop entirely. -->
+                    <div class="compact-row claude-row">
                         <span class="compact-label">Session</span>
                         <div class="compact-bar-wrap">
                             <div class="compact-bar-bg">
@@ -299,8 +341,9 @@
                                 <span class="compact-pct" id="compactSessionPct">0%</span>
                             </div>
                         </div>
+                        <span class="compact-reset" id="compactSessionReset">--</span>
                     </div>
-                    <div class="compact-row">
+                    <div class="compact-row claude-row">
                         <span class="compact-label">Weekly</span>
                         <div class="compact-bar-wrap">
                             <div class="compact-bar-bg">
@@ -308,8 +351,9 @@
                                 <span class="compact-pct" id="compactWeeklyPct">0%</span>
                             </div>
                         </div>
+                        <span class="compact-reset" id="compactWeeklyReset">--</span>
                     </div>
-                    <div class="compact-row" id="compactFableRow" style="display: none;">
+                    <div class="compact-row claude-row" id="compactFableRow" style="display: none;">
                         <span class="compact-label">Fable</span>
                         <div class="compact-bar-wrap">
                             <div class="compact-bar-bg">
@@ -317,6 +361,7 @@
                                 <span class="compact-pct" id="compactFablePct">0%</span>
                             </div>
                         </div>
+                        <span class="compact-reset" id="compactFableReset">--</span>
                     </div>
                     <!-- Codex: both windows share one row, split, so compact
                          grows by a single COMPACT_ROW_HEIGHT rather than two. -->
@@ -332,16 +377,20 @@
                                 <span class="compact-pct" id="compactCodexWeeklyPct">Weekly 0%</span>
                             </div>
                         </div>
+                        <!-- Session's, like the bar's Codex Resets item. -->
+                        <span class="compact-reset" id="compactCodexReset">--</span>
                     </div>
     <!-- Local machine stats — always on in compact mode, since a small
                          always-visible widget is exactly where these matter most. -->
                     <div class="compact-sysmon" id="compactSysmon">
                         <!-- Rides in the existing strip rather than claiming a
                              row of its own, so compact mode keeps its height. -->
-                        <span class="compact-sys-item compact-status" id="compactStatusItem" title="Claude service status">
+                        <span class="compact-sys-item compact-status" id="compactStatusItem" title="Service status">
                             <span class="status-dot unknown" id="compactStatusDot"></span>
+                            <!-- Codex's, from status.openai.com. -->
+                            <span class="status-dot unknown" id="compactCodexStatusDot"></span>
                         </span>
-                        <span class="compact-sys-item"><span class="compact-sys-key">CPU</span> <span class="compact-sys-val" id="compactCpuPct">--</span></span>
+                        <span class="compact-sys-item"><button class="compact-sys-dot" id="compactSysDotBtn" title="System details" data-i18n-title><span class="status-dot ok" id="compactSysDot"></span></button><span class="compact-sys-key">CPU</span> <span class="compact-sys-val" id="compactCpuPct">--</span></span>
                         <span class="compact-sys-item"><span class="compact-sys-key">GPU</span> <span class="compact-sys-val" id="compactGpuPct">--</span></span>
                         <span class="compact-sys-item"><span class="compact-sys-key">RAM</span> <span class="compact-sys-val" id="compactRamPct">--</span></span>
                     </div>
@@ -364,7 +413,7 @@
                         <span class="status-dot unknown" id="barStatusDot"></span>
                         <span class="bar-status-text" id="barStatusText" style="display: none;"></span>
                     </button>
-                    <button class="bar-icon-btn" id="barRefreshBtn" title="Refresh Claude usage">
+                    <button class="bar-icon-btn" id="barRefreshBtn" title="Refresh Claude usage" data-i18n-title>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <path d="M23 4v6h-6M1 20v-6h6" />
                             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
@@ -399,6 +448,14 @@
                      the narrow tiers in styles.css. -->
                 <div class="bar-group bar-group-codex" id="barCodexGroup" style="display: none;">
                     <span class="bar-brand bar-brand-codex">Codex</span>
+                    <!-- Codex's service health (status.openai.com), placed as
+                         Claude's is: beside the name it describes. Dot only
+                         while Claude's group shares the strip — the width
+                         budget has no room for a second label. -->
+                    <button class="bar-status" id="barCodexStatusItem" title="Codex service status">
+                        <span class="status-dot unknown" id="barCodexStatusDot"></span>
+                        <span class="bar-status-text" id="barCodexStatusText" style="display: none;"></span>
+                    </button>
                     <span class="bar-item">
                         <span class="bar-key" data-short="Ses">Session</span>
                         <span class="bar-meter"><span class="bar-fill codex" id="barCodexSessionFill" style="width:0%"></span></span>
@@ -418,6 +475,10 @@
                 <div class="bar-spacer" id="barDragHandle"></div>
 
                 <div class="bar-group bar-group-system">
+                    <!-- Head of the group, as the service dots head theirs. -->
+                    <button class="bar-status" id="barSysDotBtn" title="System details" data-i18n-title>
+                        <span class="status-dot ok" id="barSysDot"></span>
+                    </button>
                     <span class="bar-item">
                         <span class="bar-key">CPU</span>
                         <span class="bar-meter"><span class="bar-fill cpu" id="barCpuFill" style="width:0%"></span></span>
@@ -446,7 +507,7 @@
                      which would take the only way out of bar mode with it.
                      Pinned here, it is the last thing to lose space, never the
                      first. -->
-                <button class="bar-icon-btn bar-undock" id="barUndockBtn" title="Undock (back to widget)">
+                <button class="bar-icon-btn bar-undock" id="barUndockBtn" title="Undock (back to widget)" data-i18n-title>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <polyline points="4 14 10 14 10 20" />
                         <polyline points="20 10 14 10 14 4" />
@@ -458,19 +519,25 @@
             <div class="settings-overlay" id="settingsOverlay" style="display: none;">
                 <div class="settings-content">
                     <div class="settings-header">
-                        <span class="settings-title">Settings</span>
-                        <button class="done-settings-btn" id="closeSettingsBtn" title="Done">Done</button>
+                        <span class="settings-title" data-i18n>Settings</span>
+                        <!-- In the header's empty middle, so the panel keeps its height. -->
+                        <select id="languageSelect" class="settings-select settings-lang" title="Language / 언어">
+                            <option value="auto" data-i18n>Auto</option>
+                            <option value="en">English</option>
+                            <option value="ko">한국어</option>
+                        </select>
+                        <button class="done-settings-btn" id="closeSettingsBtn" title="Done" data-i18n data-i18n-title>Done</button>
                     </div>
 
                     <div class="settings-disclaimer">
-                        Unofficial tool — not affiliated with Anthropic.
+                        <span data-i18n>Unofficial tool — not affiliated with Anthropic.</span>
                     </div>
 
                     <div class="settings-rows">
                         <!-- Row 1: two toggles -->
                         <div class="settings-row-2col">
                             <div class="settings-col" id="autoStartCol">
-                                <span class="settings-row-label">Launch at startup</span>
+                                <span class="settings-row-label" data-i18n>Launch at startup</span>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="autoStartToggle">
                                     <span class="toggle-slider"></span>
@@ -478,7 +545,7 @@
                                 <span class="settings-row-hint" id="autoStartHint" style="display: none;">Not supported on Linux</span>
                             </div>
                             <div class="settings-col">
-                                <span class="settings-row-label" id="trayLabel">Hide from taskbar</span>
+                                <span class="settings-row-label" data-i18n id="trayLabel">Hide from taskbar</span>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="minimizeToTrayToggle">
                                     <span class="toggle-slider"></span>
@@ -489,39 +556,49 @@
                         <!-- Row 2: two toggles -->
                         <div class="settings-row-2col">
                             <div class="settings-col">
-                                <span class="settings-row-label">Always on top</span>
+                                <span class="settings-row-label" data-i18n>Always on top</span>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="alwaysOnTopToggle">
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
                             <div class="settings-col" id="barModeCol">
-                                <span class="settings-row-label" id="barModeLabel">Dock to screen edge</span>
+                                <span class="settings-row-label" data-i18n id="barModeLabel">Dock to screen edge</span>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="barModeToggle">
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
                             <div class="settings-col">
-                                <span class="settings-row-label">Show tray stats</span>
+                                <span class="settings-row-label" data-i18n>Show tray stats</span>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="showTrayStatsToggle">
                                     <span class="toggle-slider"></span>
                                 </label>
+                            </div>
+                            <!-- Fills the cell the wrapped third column leaves
+                                 empty, so the panel keeps its fixed height. -->
+                            <div class="settings-col">
+                                <span class="settings-row-label" data-i18n>Track</span>
+                                <select id="servicesSelect" class="settings-select">
+                                    <option value="both">Claude + Codex</option>
+                                    <option value="claude">Claude</option>
+                                    <option value="codex">Codex</option>
+                                </select>
                             </div>
                         </div>
 
                         <!-- Row 3: compact mode + usage alerts -->
                         <div class="settings-row-2col">
                             <div class="settings-col">
-                                <span class="settings-row-label">Compact mode</span>
+                                <span class="settings-row-label" data-i18n>Compact mode</span>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="compactModeToggle">
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
                             <div class="settings-col">
-                                <span class="settings-row-label">Usage Alerts</span>
+                                <span class="settings-row-label" data-i18n>Usage Alerts</span>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="usageAlertsToggle">
                                     <span class="toggle-slider"></span>
@@ -532,15 +609,15 @@
                         <!-- Row 4: theme + organization selector -->
                         <div class="settings-row-2col">
                             <div class="settings-col">
-                                <span class="settings-row-label">Theme</span>
+                                <span class="settings-row-label" data-i18n>Theme</span>
                                 <div class="theme-selector">
-                                    <button class="theme-btn active" data-theme="dark">Dark</button>
-                                    <button class="theme-btn" data-theme="light">Light</button>
-                                    <button class="theme-btn" data-theme="system">System</button>
+                                    <button class="theme-btn active" data-theme="dark" data-i18n>Dark</button>
+                                    <button class="theme-btn" data-theme="light" data-i18n>Light</button>
+                                    <button class="theme-btn" data-theme="system" data-i18n>System</button>
                                 </div>
                             </div>
                             <div class="settings-col" id="orgSelectorCol" style="display: none;">
-                                <span class="settings-row-label">Organization</span>
+                                <span class="settings-row-label" data-i18n>Organization</span>
                                 <select id="orgSelector" class="settings-select">
                                     <option value="org1">My Org (Personal)</option>
                                     <option value="org2">Acme Corp (Team)</option>
@@ -551,14 +628,14 @@
                         <!-- Row 5: time format + warn thresholds -->
                         <div class="settings-row-2col">
                             <div class="settings-col">
-                                <span class="settings-row-label">Time format</span>
+                                <span class="settings-row-label" data-i18n>Time format</span>
                                 <select id="timeFormat" class="settings-select">
-                                    <option value="12h">12h (3:59 PM)</option>
-                                    <option value="24h">24h (15:59)</option>
+                                    <option value="12h" data-i18n>12h (3:59 PM)</option>
+                                    <option value="24h" data-i18n>24h (15:59)</option>
                                 </select>
                             </div>
                             <div class="settings-col">
-                                <span class="settings-row-label">Warn at</span>
+                                <span class="settings-row-label" data-i18n>Warn at</span>
                                 <div class="threshold-group">
                                     <label class="threshold-label">
                                         <span class="threshold-dot warning-dot"></span>
@@ -577,7 +654,7 @@
                         <!-- Row 6: date format + auto refresh -->
                         <div class="settings-row-2col">
                             <div class="settings-col">
-                                <span class="settings-row-label">Date format</span>
+                                <span class="settings-row-label" data-i18n>Date format</span>
                                 <select id="weeklyDateFormat" class="settings-select">
                                     <option value="date">Mar 13</option>
                                     <option value="date-day">Fri Mar 13</option>
@@ -585,13 +662,13 @@
                                 </select>
                             </div>
                             <div class="settings-col">
-                                <span class="settings-row-label">Auto-refresh</span>
+                                <span class="settings-row-label" data-i18n>Auto-refresh</span>
                                 <select id="refreshInterval" class="settings-select">
-                                    <option value="15">Every 15s</option>
-                                    <option value="30">Every 30s</option>
-                                    <option value="60">Every 1 min</option>
-                                    <option value="120">Every 2 min</option>
-                                    <option value="300" selected>Every 5 min</option>
+                                    <option value="15" data-i18n>Every 15s</option>
+                                    <option value="30" data-i18n>Every 30s</option>
+                                    <option value="60" data-i18n>Every 1 min</option>
+                                    <option value="120" data-i18n>Every 2 min</option>
+                                    <option value="300" selected data-i18n>Every 5 min</option>
                                 </select>
                             </div>
                         </div>
@@ -604,7 +681,7 @@
                              a PC without Codex. Hidden when Codex's own token
                              already serves them. See src/chatgpt-usage.js. -->
                         <button class="chatgpt-btn" id="chatgptBtn" style="display: none;">Connect ChatGPT</button>
-                        <button class="logout-btn" id="logoutBtn">Log Out</button>
+                        <button class="logout-btn" id="logoutBtn" data-i18n>Log Out</button>
                     </div>
                 </div>
             </div>
@@ -612,12 +689,12 @@
             <div class="settings-overlay compact-settings-overlay" id="compactSettingsOverlay" style="display: none;">
                 <div class="settings-content">
                     <div class="settings-header">
-                        <span class="settings-title">Settings</span>
-                        <button class="done-settings-btn" id="closeCompactSettingsBtn" title="Done">Done</button>
+                        <span class="settings-title" data-i18n>Settings</span>
+                        <button class="done-settings-btn" id="closeCompactSettingsBtn" title="Done" data-i18n data-i18n-title>Done</button>
                     </div>
                     <div class="compact-settings-body">
                         <div class="settings-col">
-                            <span class="settings-row-label">Compact mode</span>
+                            <span class="settings-row-label" data-i18n>Compact mode</span>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="compactModeToggleCompact">
                                 <span class="toggle-slider"></span>
@@ -630,6 +707,7 @@
         </div>
     </div>
 
+    <script src="i18n.js"></script>
     <script src="app.js"></script>
 </body>
 

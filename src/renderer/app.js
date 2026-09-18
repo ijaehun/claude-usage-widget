@@ -11,9 +11,18 @@ let graphVisible = false;
 let graphWasVisible = false; // preserves graph state across compact mode toggle
 let appInitializing = true;  // suppresses _saveViewState during startup restore
 let isFetching = false;       // in-flight guard — prevents overlapping fetchUsageData calls
+// Which services to track: 'both' | 'claude' | 'codex'. null until chosen on
+// first run. A Codex-only user never needs a Claude login.
+let services = null;
+const claudeOn = () => services !== 'codex';
+const codexOn = () => services !== 'claude';
 const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const WIDGET_HEIGHT_COLLAPSED = 155;
 const WIDGET_ROW_HEIGHT = 30;
+const LOGIN_HEIGHT = 360; // login screen, Log in + Manual buttons in view
+// Settings panel, footer included. Measured: the footer ends at 327 (the Track
+// dropdown is taller than the toggle it sits beside); 318 already clipped 2px.
+const SETTINGS_HEIGHT = 328;
 const GRAPH_HEIGHT = 232;
 
 // --- System monitor (local machine CPU / GPU / VRAM / RAM) ---
@@ -28,8 +37,11 @@ const SYSMON_INTERVAL = 2000;
 // Above this a resource is considered under pressure and its bar turns red.
 const SYSMON_HOT_THRESHOLD = 85;
 
-// --- Claude service status (status.claude.com) ---
+// --- Service status (status.claude.com, and status.openai.com for Codex) ---
 let statusTimer = null;
+// Last snapshots, kept so a Track change can repaint without waiting a poll.
+let lastClaudeStatus = null;
+let lastCodexStatus = null;
 // The 22px row plus the section's border, padding and top margin — measured as
 // the delta this section adds to the document, not derived from the CSS, so it
 // stays honest if the padding changes. Same bookkeeping as SYSMON_HEIGHT:
@@ -42,10 +54,12 @@ const STATUS_INTERVAL = 30000;
 
 // --- OpenAI Codex plan limits (src/codex-usage.js) ---
 let codexTimer = null;
-let latestCodexUsage = null; // null while the Codex rows are hidden
+let latestCodexUsage = null; // null unless there is Codex usage to paint
+let lastCodexSample = null;  // the raw sample, kept to re-render on a services change
+let codexShown = false;      // whether the Codex section is on screen (rows or empty state)
 // Both rows plus the section's border, padding and top margin, measured as the
 // delta the section adds to the document, like STATUS_HEIGHT. Only added while
-// the section is shown.
+// the section is shown. The Codex-only empty state is sized to match.
 const CODEX_HEIGHT = 83;
 // main.js re-reads Codex's logs every 15s and answers from cache, so this only
 // has to keep the bars and countdowns from visibly lagging behind it.
@@ -63,6 +77,10 @@ const ELAPSED_GREEN_THRESHOLD = 90;
 
 // Debug logging — only shows in DevTools (development mode).
 // Regular users won't see verbose logs in production.
+// Session + Weekly rows and the expand toggle — what body.no-claude removes from
+// the widget. Measured as a delta, like the constants above.
+const CLAUDE_ROWS_HEIGHT = 86;
+
 const DEBUG = (new URLSearchParams(window.location.search)).has('debug');
 function debugLog(...args) {
   if (DEBUG) console.log('[Debug]', ...args);
@@ -72,6 +90,11 @@ function debugLog(...args) {
 const elements = {
     loadingContainer: document.getElementById('loadingContainer'),
     loginContainer: document.getElementById('loginContainer'),
+    serviceChooser: document.getElementById('serviceChooser'),
+    changeServicesLink: document.getElementById('changeServicesLink'),
+    servicesSelect: document.getElementById('servicesSelect'),
+    languageSelect: document.getElementById('languageSelect'),
+    appTitle: document.getElementById('appTitle'),
     noUsageContainer: document.getElementById('noUsageContainer'),
     mainContent: document.getElementById('mainContent'),
     loginStep1: document.getElementById('loginStep1'),
@@ -140,8 +163,15 @@ const elements = {
     barStatusItem: document.getElementById('barStatusItem'),
     barStatusDot: document.getElementById('barStatusDot'),
     barStatusText: document.getElementById('barStatusText'),
+    compactCodexStatusDot: document.getElementById('compactCodexStatusDot'),
+    barCodexStatusItem: document.getElementById('barCodexStatusItem'),
+    barCodexStatusDot: document.getElementById('barCodexStatusDot'),
+    barCodexStatusText: document.getElementById('barCodexStatusText'),
 
     codexSection: document.getElementById('codexSection'),
+    codexEmptyText: document.getElementById('codexEmptyText'),
+    codexConnectBtn: document.getElementById('codexConnectBtn'),
+    compactCodexReset: document.getElementById('compactCodexReset'),
     codexSessionProgress: document.getElementById('codexSessionProgress'),
     codexSessionPercentage: document.getElementById('codexSessionPercentage'),
     codexSessionTimer: document.getElementById('codexSessionTimer'),
@@ -221,6 +251,9 @@ const elements = {
     compactFableRow: document.getElementById('compactFableRow'),
     compactFableFill: document.getElementById('compactFableFill'),
     compactFablePct: document.getElementById('compactFablePct'),
+    compactSessionReset: document.getElementById('compactSessionReset'),
+    compactWeeklyReset: document.getElementById('compactWeeklyReset'),
+    compactFableReset: document.getElementById('compactFableReset'),
     compactSettingsOverlay: document.getElementById('compactSettingsOverlay'),
     closeCompactSettingsBtn: document.getElementById('closeCompactSettingsBtn')
 };
@@ -244,7 +277,7 @@ function populateOrgSelector(organizations, selectedOrgId) {
         organizations.forEach(org => {
             const option = document.createElement('option');
             option.value = org.id;
-            option.textContent = `${org.name}${org.isTeam ? ' (Team)' : ' (Personal)'}`;
+            option.textContent = `${org.name}${t(org.isTeam ? ' (Team)' : ' (Personal)')}`;
             if (org.id === selectedOrgId) {
                 option.selected = true;
             }
@@ -275,9 +308,10 @@ async function init() {
     // Apply saved theme and load thresholds immediately
     const settings = await window.electronAPI.getSettings();
     window._cachedSettings = settings;
+    setUiLang(settings.language); // i18n.js — before anything paints text
     applyTheme(settings.theme);
     if (window.electronAPI.platform === 'darwin') {
-        document.getElementById('trayLabel').textContent = 'Hide from Dock';
+        document.getElementById('trayLabel').textContent = t('Hide from Dock');
     }
     warnThreshold = settings.warnThreshold;
     dangerThreshold = settings.dangerThreshold;
@@ -310,26 +344,33 @@ async function init() {
         elements.expandSection.style.display = 'block';
     }
 
-    if (credentials.sessionKey && credentials.organizationId) {
-        // Populate org selector if user has multiple orgs
-        if (credentials.organizations && credentials.organizations.length > 0) {
-            populateOrgSelector(credentials.organizations, credentials.organizationId);
-        }
-        showMainContent();
-        await fetchUsageData();
-        startAutoUpdate();
-    } else {
+    // An install from before this setting existed that is already logged in
+    // keeps showing everything; only a genuinely fresh start gets asked.
+    services = settings.services || (isLoggedIn() ? 'both' : null);
+    if (services && !settings.services) await persistServices();
+    applyServices();
+
+    // Populate org selector if user has multiple orgs
+    if (credentials.organizations && credentials.organizations.length > 0) {
+        populateOrgSelector(credentials.organizations, credentials.organizationId);
+    }
+    if (!services) {
+        showServiceChooser();
+    } else if (claudeOn() && !isLoggedIn()) {
         showLoginRequired();
+    } else {
+        await enterMainView();
     }
 
     // Populate the version label shown in settings
     const version = await window.electronAPI.getAppVersion();
     if (elements.settingsVersionLabel) {
-        elements.settingsVersionLabel.textContent = `Application Version: v${version}`;
+        elements.settingsVersionLabel.textContent = t('Application Version: v{version}', { version });
     }
 
     // The system monitor is always on in both views, so it starts with the app
     // and runs for its lifetime. Same for the Claude service indicator.
+    wireSysmonPanel();
     startSysmonPolling();
     startServiceStatusPolling();
     startCodexPolling();
@@ -344,11 +385,17 @@ async function init() {
             elements.barModeToggle.checked = !!bar.enabled;
             elements.barModeToggle.disabled = !bar.supported;
             if (!bar.supported) {
-                elements.barModeLabel.title = 'Windows only';
+                elements.barModeLabel.title = t('Windows only');
                 elements.barModeCol.style.opacity = '0.5';
                 elements.dockBtn.style.display = 'none';
             }
-            if (bar.enabled) applyBarMode(true);
+            // The bar has nowhere to draw the login screen, so a logged-out
+            // start undocks instead of leaving the user a strip with no way in.
+            if (bar.enabled && isGateShown()) {
+                window.electronAPI.setBarMode(false);
+            } else if (bar.enabled) {
+                applyBarMode(true);
+            }
         }
     } catch { /* bar mode unsupported — stay in the normal layout */ }
 
@@ -360,6 +407,23 @@ async function init() {
 function setupEventListeners() {
     // Step 1: Login via BrowserWindow
     elements.autoDetectBtn.addEventListener('click', handleAutoDetect);
+
+    // First-run service chooser, and the way back to it from the login screen
+    // for someone who picked Claude but only wanted Codex.
+    elements.serviceChooser.querySelectorAll('.service-choice').forEach((btn) => {
+        btn.addEventListener('click', () => chooseServices(btn.dataset.services));
+    });
+    elements.changeServicesLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        showServiceChooser();
+    });
+
+    // Language applies the moment it is picked, so the settings panel itself
+    // shows the result; Done persists it with the rest.
+    elements.languageSelect.addEventListener('change', () => {
+        setUiLang(elements.languageSelect.value);
+        relocalize();
+    });
 
     // Step navigation
     elements.nextStepBtn.addEventListener('click', () => {
@@ -390,7 +454,7 @@ function setupEventListeners() {
     elements.refreshBtn.addEventListener('click', async () => {
         debugLog('Refresh button clicked');
         elements.refreshBtn.classList.add('spinning');
-        await fetchUsageData();
+        await Promise.all([fetchUsageData(), refreshCodexUsage()]);
         elements.refreshBtn.classList.remove('spinning');
     });
 
@@ -426,7 +490,7 @@ function setupEventListeners() {
     // Every status indicator toggles the detail panel. Nothing in the widget
     // can act on an outage, so the affordance is "show me the details" — and
     // the details belong in the popup, not crammed into a 34px strip.
-    for (const el of [elements.statusRow, elements.barStatusItem, elements.compactStatusItem]) {
+    for (const el of [elements.statusRow, elements.barStatusItem, elements.compactStatusItem, elements.barCodexStatusItem]) {
         el.addEventListener('click', () => toggleStatusPanel(el));
     }
 
@@ -479,7 +543,11 @@ function setupEventListeners() {
     elements.closeSettingsBtn.addEventListener('click', async () => {
         await saveSettings();
         elements.settingsOverlay.style.display = 'none';
-        if (_settingsOpenedFromCompact) {
+        if (isGateShown()) {
+            // Saving switched Claude on without a login; the login screen owns
+            // the window now (resizeWidget below would say the same).
+            _settingsOpenedFromCompact = false;
+        } else if (_settingsOpenedFromCompact) {
             _settingsOpenedFromCompact = false;
             if (isCompactMode) {
                 window.electronAPI.setCompactMode(true);
@@ -500,11 +568,12 @@ function setupEventListeners() {
     });
 
     // Connect / disconnect a ChatGPT account. Only shown when Codex's own
-    // token is not already serving the Codex rows (renderChatGPTButton).
-    elements.chatgptBtn.addEventListener('click', async () => {
+    // token is not already serving the Codex rows (renderChatGPTButton). The
+    // Codex-only empty state carries a second copy of the same button.
+    const toggleChatGPT = async () => {
         const state = await window.electronAPI.getChatGPTState();
         if (state.connected && !state.connectExpired) {
-            if (!window.confirm('Disconnect ChatGPT?\n\nThe Codex rows will hide unless Codex is signed in on this PC.')) return;
+            if (!window.confirm(t('Disconnect ChatGPT?\n\nThe Codex rows will hide unless Codex is signed in on this PC.'))) return;
             renderChatGPTButton(await window.electronAPI.disconnectChatGPT());
         } else {
             // Opens the real browser to sign in; resolves when the loopback
@@ -513,7 +582,9 @@ function setupEventListeners() {
             renderChatGPTButton(await window.electronAPI.connectChatGPT());
         }
         refreshCodexUsage();
-    });
+    };
+    elements.chatgptBtn.addEventListener('click', toggleChatGPT);
+    elements.codexConnectBtn.addEventListener('click', toggleChatGPT);
 
     // Theme buttons
     elements.themeBtns.forEach(btn => {
@@ -549,6 +620,7 @@ function setupEventListeners() {
     // Listen for session expiration events (403 errors)
     window.electronAPI.onSessionExpired(() => {
         debugLog('Session expired event received');
+        if (!claudeOn()) return; // nothing of Claude's is on screen to log out of
         credentials = { sessionKey: null, organizationId: null };
         showLoginRequired();
     });
@@ -584,7 +656,7 @@ function setupEventListeners() {
         }
         await loadSettings();
         elements.settingsOverlay.style.display = 'flex';
-        window.electronAPI.resizeWindow(318);
+        window.electronAPI.resizeWindow(SETTINGS_HEIGHT);
     });
 
     // Close compact settings — apply compact toggle value then close
@@ -603,7 +675,7 @@ function setupEventListeners() {
 async function handleConnect() {
     const sessionKey = elements.sessionKeyInput.value.trim();
     if (!sessionKey) {
-        elements.sessionKeyError.textContent = 'Please paste your session key';
+        elements.sessionKeyError.textContent = t('Please paste your session key');
         return;
     }
 
@@ -626,31 +698,31 @@ async function handleConnect() {
             await fetchUsageData();
             startAutoUpdate();
         } else {
-            elements.sessionKeyError.textContent = result.error || 'Invalid session key';
+            elements.sessionKeyError.textContent = t(result.error || 'Invalid session key');
         }
     } catch (error) {
-        elements.sessionKeyError.textContent = 'Connection failed. Check your key.';
+        elements.sessionKeyError.textContent = t('Connection failed. Check your key.');
     } finally {
         elements.connectBtn.disabled = false;
-        elements.connectBtn.textContent = 'Connect';
+        elements.connectBtn.textContent = t('Connect');
     }
 }
 
 // Handle auto-detect from browser cookies
 async function handleAutoDetect() {
     elements.autoDetectBtn.disabled = true;
-    elements.autoDetectBtn.textContent = 'Waiting...';
+    elements.autoDetectBtn.textContent = t('Waiting...');
     elements.autoDetectError.textContent = '';
 
     try {
         const result = await window.electronAPI.detectSessionKey();
         if (!result.success) {
-            elements.autoDetectError.textContent = result.error || 'Login failed';
+            elements.autoDetectError.textContent = t(result.error || 'Login failed');
             return;
         }
 
         // Got sessionKey from login, now validate it
-        elements.autoDetectBtn.textContent = 'Validating...';
+        elements.autoDetectBtn.textContent = t('Validating...');
         const validation = await window.electronAPI.validateSessionKey(result.sessionKey);
 
         if (validation.success) {
@@ -666,19 +738,23 @@ async function handleAutoDetect() {
             startAutoUpdate();
         } else {
             elements.autoDetectError.textContent =
-                'Session invalid. Try again or use Manual →';
+                t('Session invalid. Try again or use Manual →');
         }
     } catch (error) {
-        elements.autoDetectError.textContent = error.message || 'Login failed';
+        elements.autoDetectError.textContent = t(error.message || 'Login failed');
     } finally {
         elements.autoDetectBtn.disabled = false;
-        elements.autoDetectBtn.textContent = 'Log in';
+        elements.autoDetectBtn.textContent = t('Log in');
     }
 }
 
 // Fetch usage data from Claude API
 async function fetchUsageData(options = {}) {
     debugLog('fetchUsageData called');
+
+    // Claude switched off: every caller (timers, tray, refresh) lands here,
+    // and none of them should send a Codex-only user to Claude's login.
+    if (!claudeOn()) return;
 
     if (isFetching) {
         debugLog('Fetch already in flight — skipping');
@@ -817,6 +893,7 @@ function buildExtraRows(data) {
 
         const row = document.createElement('div');
         row.className = 'usage-section';
+        row.dataset.key = key; // compact mirrors the Fable row's countdown by key
 
         // Build row using DOM methods (no innerHTML)
         const label = document.createElement('span');
@@ -974,11 +1051,9 @@ function refreshExtraTimers() {
         const textEl = row.querySelector('.timer-text');
         const circleEl = row.querySelector('.timer-progress');
         if (!textEl || !circleEl) return;
-        const resetsAt = textEl.dataset.resets;
-        const totalMinutes = parseInt(textEl.dataset.total);
-        if (resetsAt) {
-            updateTimer(circleEl, textEl, resetsAt, totalMinutes);
-        }
+        // No reset time means the window has not started; updateTimer says so.
+        // Skipping it here left those rows on the placeholder --:-- for good.
+        updateTimer(circleEl, textEl, textEl.dataset.resets || null, parseInt(textEl.dataset.total));
     });
 }
 
@@ -1042,7 +1117,9 @@ function applyBarMode(enabled) {
     // Coming back from the bar: main.js restored the pre-dock position but can
     // only guess the height, since the real one depends on which sections are
     // open. isBarMode is already false here, so resizeWidget is live again.
-    if (isCompactMode) {
+    if (isGateShown()) {
+        window.electronAPI.resizeWindow(LOGIN_HEIGHT);
+    } else if (isCompactMode) {
         window.electronAPI.setCompactMode(true);
     } else {
         resizeWidget();
@@ -1069,7 +1146,33 @@ function updateBarUsage(data) {
     }
     // The session countdown is already rendered for the normal view; mirror
     // its text rather than recomputing the same value a second way.
-    elements.barResetsIn.textContent = elements.sessionTimeText.textContent || '--:--';
+    mirrorCountdown(elements.barResetsIn, elements.sessionTimeText, false);
+}
+
+/**
+ * Copy a countdown the widget rows already rendered into a compact or bar slot,
+ * carrying over the dimmed "not started" look the widget gives it. `narrow`
+ * slots (compact's 44px column) cannot fit the words, so they get a dash and
+ * keep the explanation in the tooltip.
+ */
+function mirrorCountdown(targetEl, sourceEl, narrow) {
+    const text = (sourceEl && sourceEl.textContent) || '';
+    const idle = text === 'Not started';
+    let shown = text || (narrow ? '--' : '--:--');
+    if (narrow && idle) shown = '—';
+    if (narrow && text === 'Resetting...') shown = '0m';
+    targetEl.textContent = shown;
+    targetEl.classList.toggle('idle', idle);
+    targetEl.title = idle ? t('Not started — the window starts with your next message')
+        : (/\d/.test(text) ? t('Resets in {time}', { time: text }) : '');
+}
+
+/** Compact's reset column, mirrored from the widget rows like the bar's. */
+function updateCompactResets() {
+    mirrorCountdown(elements.compactSessionReset, elements.sessionTimeText, true);
+    mirrorCountdown(elements.compactWeeklyReset, elements.weeklyTimeText, true);
+    mirrorCountdown(elements.compactFableReset,
+        elements.extraRows.querySelector('[data-key="seven_day_fable"] .timer-text'), true);
 }
 
 async function refreshSystemStats() {
@@ -1088,8 +1191,6 @@ async function refreshSystemStats() {
         stats.cpu.percent,
         stats.cpu.cores ? stats.cpu.cores + ' threads' : null
     );
-    // The full model string is too long for the row, so it lives in the tooltip.
-    if (stats.cpu.model) elements.cpuLabel.title = stats.cpu.model;
 
     // GPU + VRAM. Both rows come from the same nvidia-smi sample, so when the
     // GPU is unavailable they blank together rather than one going stale.
@@ -1108,7 +1209,6 @@ async function refreshSystemStats() {
     } else {
         renderSysmonRow(elements.gpuFill, elements.gpuPct, elements.gpuDetail, null, 'n/a');
         renderSysmonRow(elements.vramFill, elements.vramPct, elements.vramDetail, null, 'n/a');
-        elements.gpuLabel.title = gpu.reason ? 'GPU: ' + gpu.reason : 'GPU';
     }
 
     // System RAM
@@ -1118,29 +1218,44 @@ async function refreshSystemStats() {
         formatGB(stats.memory.usedBytes) + ' / ' + formatGB(stats.memory.totalBytes)
     );
 
-    // Compact strip. VRAM has no slot of its own here, so it rides along in the
-    // GPU item's tooltip rather than being dropped entirely.
-    renderCompactSysVal(
-        elements.compactCpuPct, stats.cpu.percent,
-        stats.cpu.model || 'CPU'
-    );
-    renderCompactSysVal(
-        elements.compactGpuPct, gpu.available ? gpu.percent : null,
-        gpu.available
-            ? 'VRAM ' + (gpu.memUsedMB / 1024).toFixed(1) + ' / ' + (gpu.memTotalMB / 1024).toFixed(1) + ' GB'
-              + (gpu.tempC !== null && gpu.tempC !== undefined ? '  ·  ' + gpu.tempC + '°C' : '')
-            : (gpu.reason ? 'GPU: ' + gpu.reason : 'GPU')
-    );
-    renderCompactSysVal(
-        elements.compactRamPct, stats.memory.percent,
-        formatGB(stats.memory.usedBytes) + ' / ' + formatGB(stats.memory.totalBytes)
-    );
+
+    // Compact strip
+    renderCompactSysVal(elements.compactCpuPct, stats.cpu.percent);
+    renderCompactSysVal(elements.compactGpuPct, gpu.available ? gpu.percent : null);
+    renderCompactSysVal(elements.compactRamPct, stats.memory.percent);
+
+    renderSysmonDots(stats);
 
     // Docked bar
     renderBarItem(elements.barCpuFill, elements.barCpuPct, stats.cpu.percent);
     renderBarItem(elements.barGpuFill, elements.barGpuPct, gpu.available ? gpu.percent : null);
     renderBarItem(elements.barVramFill, elements.barVramPct, gpu.available ? gpu.memPercent : null);
     renderBarItem(elements.barRamFill, elements.barRamPct, stats.memory.percent);
+}
+
+/**
+ * The system dot in each view opens the system panel — the same popup as the
+ * service status, with what the rows cannot fit (src/renderer/system-panel.*).
+ * One control per view, as the status dot is: making every CPU/GPU/VRAM/RAM
+ * item open the same card read as four different buttons. Click, not hover,
+ * for the status panel's reason: the bar sits where the cursor passes all day.
+ */
+function wireSysmonPanel() {
+    for (const id of ['sysmonDotBtn', 'compactSysDotBtn', 'barSysDotBtn']) {
+        const btn = document.getElementById(id);
+        if (btn) btn.addEventListener('click', () => toggleStatusPanel(btn, 'system'));
+    }
+}
+
+/** Green, or red while any resource is past the hot threshold. */
+function renderSysmonDots(stats) {
+    const gpu = stats.gpu && stats.gpu.available ? stats.gpu : {};
+    const readings = [stats.cpu && stats.cpu.percent, gpu.percent, gpu.memPercent, stats.memory && stats.memory.percent];
+    const hot = readings.some((p) => typeof p === 'number' && p >= SYSMON_HOT_THRESHOLD);
+    for (const id of ['sysmonDot', 'compactSysDot', 'barSysDot']) {
+        const dot = document.getElementById(id);
+        if (dot) dot.className = 'status-dot ' + (hot ? 'down' : 'ok');
+    }
 }
 
 /** Runs for the app's lifetime — both views always display these stats. */
@@ -1150,63 +1265,121 @@ function startSysmonPolling() {
     sysmonTimer = setInterval(refreshSystemStats, SYSMON_INTERVAL);
 }
 
-// --- Claude service status ----------------------------------------------------
+// --- Service status (Claude, and Codex beside it) ------------------------------
+
+// For picking the worse of two services. 'unknown' sits under a real problem:
+// a page we could not read is not evidence of an outage.
+const STATUS_RANK = { ok: 0, unknown: 1, warn: 2, down: 3 };
+
+function statusChip(label, level, title) {
+    const chip = document.createElement('span');
+    chip.className = 'status-chip';
+    chip.title = title;
+    const dot = document.createElement('span');
+    dot.className = 'status-dot ' + level;
+    chip.append(dot, document.createTextNode(label));
+    return chip;
+}
+
+/** The page's one-line summary, in the UI language (main.js builds it in English). */
+function overallText(status) {
+    if (status.level === 'ok') return t('All systems operational');
+    if (status.level === 'unknown') return t('Status unavailable');
+    // main.js names the worst component; fall back to finding it here.
+    const worst = status.worst || (status.components || []).find((c) => c.level === status.level);
+    return worst ? `${worst.label}: ${t(worst.statusText)}` : t('Status unavailable');
+}
+
+/** One service's lines for the shared tooltip. */
+function statusLines(status, name) {
+    const lines = [name + ':'];
+    for (const c of status.components || []) lines.push(`  ${c.label}: ${t(c.statusText)}`);
+    for (const inc of status.incidents || []) lines.push('  — ' + inc.name);
+    if (status.error) lines.push('  (' + status.error + ')');
+    return lines;
+}
 
 /**
- * Paint the indicator in all three views from a single main-process snapshot.
+ * The docked bar's label for one service. Naming the affected service costs
+ * ~40px of a strip that has none to spare, so it appears only while something
+ * is actually wrong, and collapses to a count once more than one is involved.
+ */
+function renderBarStatus(status, dotEl, textEl, itemEl, tooltip) {
+    const failing = (status.components || []).filter((c) => c.level !== 'ok');
+    let label = '';
+    if (status.level === 'unknown') label = 'status?';
+    else if (failing.length === 1) label = failing[0].short;
+    else if (failing.length > 1) label = failing.length + ' services';
+    dotEl.className = 'status-dot ' + status.level;
+    textEl.textContent = label;
+    textEl.className = 'bar-status-text ' + status.level;
+    textEl.style.display = label ? '' : 'none';
+    itemEl.title = tooltip;
+}
+
+/**
+ * Paint the indicators in all three views from the main-process snapshots.
  * Level 'unknown' is rendered as grey and says so, rather than falling back to
  * an optimistic green — the same rule the system monitor uses for a missing
- * reading.
+ * reading. Each service shows only while it is tracked.
  */
-function renderServiceStatus(status) {
-    if (!status) return;
-
-    const components = status.components || [];
-    const incidents = status.incidents || [];
-    const failing = components.filter((c) => c.level !== 'ok');
+function renderServiceStatus(claude, codex) {
+    const sources = [];
+    if (claudeOn() && claude) sources.push({ status: claude, name: 'Claude' });
+    if (codexOn() && codex) sources.push({ status: codex, name: 'Codex' });
+    if (!sources.length) return;
 
     // One tooltip for every view: it is where the detail the collapsed views
     // drop has to end up, so it is built once and shared.
-    const lines = components.map((c) => `${c.label}: ${c.statusText}`);
-    for (const inc of incidents) lines.push('— ' + inc.name);
-    if (status.error) lines.push('(' + status.error + ')');
-    lines.push('Click to open status.claude.com');
+    const lines = [];
+    for (const s of sources) lines.push(...statusLines(s.status, s.name));
+    lines.push(t('Click for details'));
     const tooltip = lines.join('\n');
 
-    // Widget row: a chip per component, then a one-line summary on the right.
-    elements.statusChips.replaceChildren(...components.map((c) => {
-        const chip = document.createElement('span');
-        chip.className = 'status-chip';
-        chip.title = `${c.label}: ${c.statusText}`;
-        const dot = document.createElement('span');
-        dot.className = 'status-dot ' + c.level;
-        chip.append(dot, document.createTextNode(c.short));
-        return chip;
-    }));
-    // An incident title says more than the component state it produced, so it
-    // takes the summary slot whenever there is one.
-    elements.statusText.textContent = incidents.length && status.level !== 'ok'
-        ? incidents[0].name
-        : status.overallText;
-    elements.statusText.className = 'status-text ' + status.level;
+    // Widget row. Alone, a service gets a chip per component. With Claude
+    // beside it, Codex collapses to one chip for the worst of its four, so the
+    // row stays one line; the panel has the breakdown.
+    const chips = [];
+    if (claudeOn() && claude) {
+        for (const c of claude.components || []) chips.push(statusChip(c.short, c.level, `${c.label}: ${t(c.statusText)}`));
+    }
+    if (codexOn() && codex) {
+        if (claudeOn()) {
+            const sep = document.createElement('span');
+            sep.className = 'status-chip-sep';
+            chips.push(sep, statusChip('Codex', codex.level, 'Codex: ' + overallText(codex)));
+        } else {
+            for (const c of codex.components || []) chips.push(statusChip(c.short, c.level, `${c.label}: ${t(c.statusText)}`));
+        }
+    }
+    elements.statusChips.replaceChildren(...chips);
+
+    // The summary speaks for whichever service is worse off. An incident
+    // title says more than the component state it produced, so it takes the
+    // slot whenever there is one (only Claude's page lists them).
+    const worst = sources.reduce((a, b) =>
+        (STATUS_RANK[b.status.level] > STATUS_RANK[a.status.level] ? b : a));
+    const ws = worst.status;
+    let summary;
+    if (ws.level === 'ok') summary = t('All systems operational');
+    else if ((ws.incidents || []).length) summary = ws.incidents[0].name;
+    else if (ws.level === 'unknown' && sources.length > 1) summary = t('{name} status unavailable', { name: worst.name });
+    else summary = overallText(ws);
+    elements.statusText.textContent = summary;
+    elements.statusText.className = 'status-text ' + ws.level;
     elements.statusRow.title = tooltip;
 
-    // Compact strip and docked bar: one dot for the worst of the three.
-    elements.compactStatusDot.className = 'status-dot ' + status.level;
+    // Compact strip and docked bar: one dot per service, for the worst of its
+    // components. CSS hides the dot of an untracked one.
     elements.compactStatusItem.title = tooltip;
-    elements.barStatusDot.className = 'status-dot ' + status.level;
-    elements.barStatusItem.title = tooltip;
-
-    // Naming the affected service costs ~40px of a strip that has none to
-    // spare, so the bar's label appears only while something is actually
-    // wrong, and collapses to a count once more than one service is involved.
-    let barLabel = '';
-    if (status.level === 'unknown') barLabel = 'status?';
-    else if (failing.length === 1) barLabel = failing[0].short;
-    else if (failing.length > 1) barLabel = failing.length + ' services';
-    elements.barStatusText.textContent = barLabel;
-    elements.barStatusText.className = 'bar-status-text ' + status.level;
-    elements.barStatusText.style.display = barLabel ? '' : 'none';
+    if (claude) {
+        elements.compactStatusDot.className = 'status-dot ' + claude.level;
+        renderBarStatus(claude, elements.barStatusDot, elements.barStatusText, elements.barStatusItem, tooltip);
+    }
+    if (codex) {
+        elements.compactCodexStatusDot.className = 'status-dot ' + codex.level;
+        renderBarStatus(codex, elements.barCodexStatusDot, elements.barCodexStatusText, elements.barCodexStatusItem, tooltip);
+    }
 }
 
 /**
@@ -1218,17 +1391,23 @@ function renderServiceStatus(status) {
  * The theme rides along because the panel is a separate window with no access
  * to the settings store.
  */
-function toggleStatusPanel(anchorEl) {
+function toggleStatusPanel(anchorEl, kind = 'status') {
     const r = anchorEl.getBoundingClientRect();
     window.electronAPI.toggleStatusPanel({
         anchor: { x: r.left, y: r.top, width: r.width, height: r.height },
+        kind,
+        lang: uiLang,
         theme: document.body.classList.contains('theme-light') ? 'light' : 'dark',
     });
 }
 
 async function refreshServiceStatus() {
     try {
-        renderServiceStatus(await window.electronAPI.getServiceStatus());
+        [lastClaudeStatus, lastCodexStatus] = await Promise.all([
+            window.electronAPI.getServiceStatus(),
+            window.electronAPI.getCodexServiceStatus(),
+        ]);
+        renderServiceStatus(lastClaudeStatus, lastCodexStatus);
     } catch (err) {
         console.warn('Service status unavailable:', err);
     }
@@ -1274,18 +1453,25 @@ function renderCompactCodex(fillEl, pctEl, win, tag, fillClass) {
  * follow, and why a clone on a machine without Codex looks as it did before.
  */
 function renderCodexUsage(usage) {
+    lastCodexSample = usage;
     // Keep the Settings button in step with the account state every poll.
     if (usage && usage.account) renderChatGPTButton(usage.account);
 
-    const visible = !!(usage && usage.available);
-    const changed = visible !== (latestCodexUsage !== null);
-    latestCodexUsage = visible ? usage : null;
+    const available = !!(usage && usage.available);
+    // Codex-only keeps the section up even with nothing to show: it is the
+    // whole widget then, and the empty state is where the user connects.
+    const visible = codexOn() && (available || !claudeOn());
+    const changed = visible !== codexShown;
+    codexShown = visible;
+    latestCodexUsage = visible && available ? usage : null;
 
     elements.codexSection.style.display = visible ? '' : 'none';
+    elements.codexSection.classList.toggle('empty', visible && !available);
     elements.compactCodexRow.style.display = visible ? '' : 'none';
     elements.barCodexGroup.style.display = visible ? '' : 'none';
-    // The docked strip's narrow tiers budget for the group only while it is up.
-    document.body.classList.toggle('has-codex', visible);
+    // The docked strip's narrow tiers budget for both groups side by side.
+    // Codex alone is narrower than Claude alone, so it takes the base tiers.
+    document.body.classList.toggle('has-codex', visible && claudeOn());
 
     if (changed) {
         // Both window heights are sums of fixed sections, so a section coming
@@ -1295,6 +1481,25 @@ function renderCodexUsage(usage) {
         else resizeWidget();
     }
     if (!visible) return;
+
+    if (!available) {
+        const reason = (usage && usage.reason) || '';
+        const account = (usage && usage.account) || {};
+        elements.codexEmptyText.textContent = t(account.codexToken
+            ? 'Codex is signed in, but no usage is recorded yet.'
+            : reason === 'Codex not found' ? 'Codex is not set up on this PC.' : 'No Codex usage on this PC yet.');
+        elements.codexConnectBtn.style.display = account.codexToken ? 'none' : '';
+        for (const el of [elements.compactCodexSessionPct, elements.compactCodexWeeklyPct]) el.textContent = '--';
+        for (const el of [elements.compactCodexSessionFill, elements.compactCodexWeeklyFill]) el.style.width = '0%';
+        renderBarItem(elements.barCodexSessionFill, elements.barCodexSessionPct, null);
+        renderBarItem(elements.barCodexWeeklyFill, elements.barCodexWeeklyPct, null);
+        elements.barCodexResetsIn.textContent = '--:--';
+        elements.compactCodexReset.textContent = '--';
+        const hint = t('No Codex usage yet — connect ChatGPT in Settings, or use Codex on this PC.');
+        elements.compactCodexRow.title = hint;
+        elements.barCodexGroup.title = hint;
+        return;
+    }
 
     const settings = window._cachedSettings || {};
     const timeFormat = settings.timeFormat || '12h';
@@ -1318,28 +1523,29 @@ function renderCodexUsage(usage) {
         usage.weekly ? usage.weekly.usedPercent : null);
     // Same as Claude's Resets item: mirror the session countdown the widget
     // row just rendered rather than formatting it a second way.
-    elements.barCodexResetsIn.textContent = elements.codexSessionTimeText.textContent || '--:--';
+    mirrorCountdown(elements.barCodexResetsIn, elements.codexSessionTimeText, false);
+    mirrorCountdown(elements.compactCodexReset, elements.codexSessionTimeText, true);
 
     // The numbers are only as fresh as the last Codex turn on this machine,
     // which nothing else on screen can say, so every view's tooltip does.
-    const plan = usage.plan ? ` (${usage.plan[0].toUpperCase()}${usage.plan.slice(1)} plan)` : '';
+    const plan = usage.plan ? t(' ({plan} plan)', { plan: usage.plan[0].toUpperCase() + usage.plan.slice(1) }) : '';
     const asOf = usage.capturedAt
         ? formatResetsAt(usage.capturedAt, true, timeFormat, 'date-day-time')
         : 'unknown';
     const lines = ['OpenAI Codex' + plan];
     if (usage.source === 'chatgpt') {
         const via = (usage.account && usage.account.source === 'account')
-            ? 'via your connected ChatGPT account'
-            : 'via the Codex sign-in on this PC';
-        lines.push('Live from chatgpt.com (' + via + '), checked ' + asOf);
-        lines.push('Includes use on other devices and the web.');
+            ? t('via your connected ChatGPT account')
+            : t('via the Codex sign-in on this PC');
+        lines.push(t('Live from chatgpt.com ({via}), checked {at}', { via, at: asOf }));
+        lines.push(t('Includes use on other devices and the web.'));
     } else {
-        lines.push('As of the last Codex turn on this PC: ' + asOf);
+        lines.push(t('As of the last Codex turn on this PC: {at}', { at: asOf }));
         const account = usage.account || {};
         if (account.connectExpired) {
-            lines.push('ChatGPT sign-in expired — reconnect in Settings.');
+            lines.push(t('ChatGPT sign-in expired — reconnect in Settings.'));
         } else if (!account.codexToken && !account.connected) {
-            lines.push('Connect ChatGPT in Settings to include other devices.');
+            lines.push(t('Connect ChatGPT in Settings to include other devices.'));
         }
     }
     if (usage.error) lines.push('(' + usage.error + ')');
@@ -1364,15 +1570,19 @@ function renderChatGPTButton(state) {
     btn.disabled = !!state.connecting;
     btn.classList.toggle('connected', live);
     btn.classList.toggle('expired', state.connected && state.connectExpired);
-    if (state.connecting) btn.textContent = 'Connecting…';
-    else if (live) btn.textContent = 'ChatGPT connected';
-    else if (state.connected && state.connectExpired) btn.textContent = 'Reconnect ChatGPT';
-    else btn.textContent = 'Connect ChatGPT';
+    if (state.connecting) btn.textContent = t('Connecting…');
+    else if (live) btn.textContent = t('ChatGPT connected');
+    else if (state.connected && state.connectExpired) btn.textContent = t('Reconnect ChatGPT');
+    else btn.textContent = t('Connect ChatGPT');
     btn.title = live
-        ? 'Codex limits come live from your ChatGPT account. Click to disconnect.'
+        ? t('Codex limits come live from your ChatGPT account. Click to disconnect.')
         : (state.connected && state.connectExpired)
-            ? 'The ChatGPT sign-in expired. Click to sign in again.'
-            : 'Sign in to ChatGPT in your browser so Codex limits show here without running Codex.';
+            ? t('The ChatGPT sign-in expired. Click to sign in again.')
+            : t('Sign in to ChatGPT in your browser so Codex limits show here without running Codex.');
+    // The Codex-only empty state's copy (its visibility is renderCodexUsage's).
+    elements.codexConnectBtn.textContent = btn.textContent;
+    elements.codexConnectBtn.title = btn.title;
+    elements.codexConnectBtn.disabled = btn.disabled;
 }
 
 async function refreshCodexUsage() {
@@ -1398,15 +1608,23 @@ const EXPAND_OVERHEAD = 28; // margin-top(12) + padding-top(6) + bottom buffer(1
 function resizeWidget() {
     // The docked bar's size is fixed by the appbar reservation.
     if (isBarMode) return;
+    // The login screen and the chooser have their own height. Codex coming and
+    // going, or settings closing, calls this too, and must not shrink them.
+    if (isGateShown()) {
+        window.electronAPI.resizeWindow(LOGIN_HEIGHT);
+        return;
+    }
+    const claude = claudeOn();
     const extraCount = elements.extraRows.children.length;
-    const expandedOffset = isExpanded && extraCount > 0
+    const expandedOffset = claude && isExpanded && extraCount > 0
         ? EXPAND_OVERHEAD + (extraCount * WIDGET_ROW_HEIGHT)
         : 0;
-    const graphOffset = graphVisible ? GRAPH_HEIGHT : 0;
+    const graphOffset = claude && graphVisible ? GRAPH_HEIGHT : 0;
     const sysmonOffset = SYSMON_HEIGHT; // always shown
-    const statusOffset = STATUS_HEIGHT; // always shown, one fixed row
-    const codexOffset = latestCodexUsage ? CODEX_HEIGHT : 0; // only with Codex usage
-    const totalHeight = WIDGET_HEIGHT_COLLAPSED + expandedOffset + graphOffset
+    const statusOffset = STATUS_HEIGHT; // service health, whichever is tracked
+    const claudeOffset = claude ? 0 : -CLAUDE_ROWS_HEIGHT; // Session/Weekly rows gone
+    const codexOffset = codexShown ? CODEX_HEIGHT : 0; // rows, or Codex-only's empty state
+    const totalHeight = WIDGET_HEIGHT_COLLAPSED + claudeOffset + expandedOffset + graphOffset
         + sysmonOffset + statusOffset + codexOffset;
     window.electronAPI.resizeWindow(totalHeight);
 }
@@ -1435,7 +1653,9 @@ function updateUI(data) {
     showMainContent();
     buildExtraRows(data);
     refreshTimers();
-    if (isExpanded) refreshExtraTimers();
+    // Unconditionally: the rows are rebuilt at --:-- on every fetch, and gating
+    // this on isExpanded left them there when the panel was opened later.
+    refreshExtraTimers();
     if (!isCompactMode) resizeWidget();
     startCountdown();
     if (graphVisible) {
@@ -1482,14 +1702,14 @@ function checkUsageAlerts(data) {
         alertFired.session_warn = true; // suppress warn if we jumped straight to danger
         window.electronAPI.showNotification(
             'Claude Usage Widget',
-            `Current Session usage is at ${Math.round(sessionPct)}% — usage is extremely low`
+            t('Current Session usage is at {pct}% — usage is extremely low', { pct: Math.round(sessionPct) })
         );
     // Current Session — warn threshold
     } else if (sessionPct >= warnThreshold && sessionPct < 100 && !alertFired.session_warn) {
         alertFired.session_warn = true;
         window.electronAPI.showNotification(
             'Claude Usage Widget',
-            `Current Session usage is at ${Math.round(sessionPct)}% — usage is low`
+            t('Current Session usage is at {pct}% — usage is low', { pct: Math.round(sessionPct) })
         );
     }
 
@@ -1500,14 +1720,14 @@ function checkUsageAlerts(data) {
         alertFired.weekly_warn = true;
         window.electronAPI.showNotification(
             'Claude Usage Widget',
-            `Weekly Limit usage is at ${Math.round(weeklyPct)}% — usage is extremely low`
+            t('Weekly Limit usage is at {pct}% — usage is extremely low', { pct: Math.round(weeklyPct) })
         );
     // Weekly Limit — warn threshold
     } else if (weeklyPct >= warnThreshold && weeklyPct < 100 && !alertFired.weekly_warn) {
         alertFired.weekly_warn = true;
         window.electronAPI.showNotification(
             'Claude Usage Widget',
-            `Weekly Limit usage is at ${Math.round(weeklyPct)}% — usage is low`
+            t('Weekly Limit usage is at {pct}% — usage is low', { pct: Math.round(weeklyPct) })
         );
     }
 
@@ -1521,23 +1741,26 @@ function checkUsageAlerts(data) {
         alertFired.blocked = true;
         if (weeklyPct >= 100) {
             window.electronAPI.showNotification(
-                'Weekly limit reached.',
+                t('Weekly limit reached.'),
                 // Build date and time as separate pieces and join with "at" — formatResetsAt's
                 // combined date-day-time mode concatenates them with no connector, which read
                 // run-on. Independent of dashboard's weeklyDateFormat setting on purpose.
-                `Usage resets on ${formatResetsAt(data.seven_day?.resets_at, true, settings.timeFormat || '12h', 'date-day')} at ${formatResetsAt(data.seven_day?.resets_at, false, settings.timeFormat || '12h', 'date-day')}.`
+                t('Usage resets on {date} at {time}.', {
+                    date: formatResetsAt(data.seven_day?.resets_at, true, settings.timeFormat || '12h', 'date-day'),
+                    time: formatResetsAt(data.seven_day?.resets_at, false, settings.timeFormat || '12h', 'date-day'),
+                })
             );
         } else {
             window.electronAPI.showNotification(
-                'Session limit reached.',
-                `Usage resets at ${formatResetsAt(data.five_hour?.resets_at, false, settings.timeFormat || '12h', settings.weeklyDateFormat || 'date')}.`
+                t('Session limit reached.'),
+                t('Usage resets at {time}.', { time: formatResetsAt(data.five_hour?.resets_at, false, settings.timeFormat || '12h', settings.weeklyDateFormat || 'date') })
             );
         }
     } else if (!isBlocked && alertFired.blocked) {
         alertFired.blocked = false;
         window.electronAPI.showNotification(
             'Claude Usage Widget',
-            'Usage is available again.'
+            t('Usage is available again.')
         );
     }
 }
@@ -1640,6 +1863,8 @@ function updateCompactBars(data) {
     } else {
         elements.compactFableRow.style.display = 'none';
     }
+
+    updateCompactResets();
 }
 
 // Persist compact mode setting without touching the rest of settings — debounced
@@ -1795,10 +2020,12 @@ function startCountdown() {
     if (countdownInterval) clearInterval(countdownInterval);
     countdownInterval = setInterval(() => {
         refreshTimers();
-        if (isExpanded) refreshExtraTimers();
+        refreshExtraTimers();
         // The strip's Resets text mirrors the countdown just redrawn; without
         // this it only moved on each fetch, while Codex's beside it ticks.
+        // Compact mirrors it the same way.
         if (isBarMode && latestUsageData) updateBarUsage(latestUsageData);
+        if (isCompactMode && latestUsageData) updateCompactResets();
     }, 30000);
 }
 
@@ -1823,6 +2050,7 @@ function updateProgressBar(progressElement, percentageElement, value, isWeekly =
 function formatResetsAt(resetsAt, isWeekly, timeFormat, weeklyDateFormat) {
     if (!resetsAt) return '—';
     const date = new Date(resetsAt);
+    if (Number.isNaN(date.getTime())) return '—';
     const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -1857,7 +2085,7 @@ function updateTimer(timerElement, textElement, resetsAt, totalMinutes) {
         textElement.textContent = 'Not started';
         textElement.style.opacity = '0.4';
         textElement.style.fontSize = '10px';
-        textElement.title = 'Starts when a message is sent';
+        textElement.title = t('Starts when a message is sent');
         timerElement.style.strokeDashoffset = 63;
         return;
     }
@@ -1870,6 +2098,13 @@ function updateTimer(timerElement, textElement, resetsAt, totalMinutes) {
     const resetDate = new Date(resetsAt);
     const now = new Date();
     const diff = resetDate - now;
+
+    // A format this cannot parse would otherwise print "NaNm".
+    if (Number.isNaN(diff)) {
+        textElement.textContent = '--:--';
+        timerElement.style.strokeDashoffset = 63;
+        return;
+    }
 
     if (diff <= 0) {
         textElement.textContent = 'Resetting...';
@@ -1916,15 +2151,108 @@ function updateTimer(timerElement, textElement, resetsAt, totalMinutes) {
 
 // UI State Management
 function showLoginRequired() {
-    elements.loadingContainer.style.display = 'none';
+    leaveMainView();
+    elements.serviceChooser.style.display = 'none';
     elements.loginContainer.style.display = 'flex';
-    elements.noUsageContainer.style.display = 'none';
-    elements.mainContent.style.display = 'none';
     // Reset to step 1
     elements.loginStep1.style.display = 'flex';
     elements.loginStep2.style.display = 'none';
     elements.sessionKeyError.textContent = '';
     elements.sessionKeyInput.value = '';
+}
+
+/** First run: ask which services to track before any login. */
+function showServiceChooser() {
+    leaveMainView();
+    elements.loginContainer.style.display = 'none';
+    elements.serviceChooser.style.display = 'flex';
+}
+
+async function chooseServices(choice) {
+    services = choice;
+    await persistServices();
+    applyServices();
+    if (claudeOn() && !isLoggedIn()) {
+        showLoginRequired();
+    } else {
+        await enterMainView();
+    }
+}
+
+async function persistServices() {
+    const settings = window._cachedSettings || await window.electronAPI.getSettings();
+    settings.services = services;
+    window._cachedSettings = settings;
+    await window.electronAPI.saveSettings(settings);
+}
+
+/**
+ * Strip whichever service is switched off from every view. The CSS does the
+ * hiding (body.no-claude / body.no-codex); this re-derives what depends on it.
+ */
+function applyServices() {
+    document.body.classList.toggle('no-claude', !claudeOn());
+    document.body.classList.toggle('no-codex', !codexOn());
+    // Named for what it tracks. Display only: the package, exe and install
+    // folder keep "Claude-Usage-Widget", or an upgrade would lose its settings.
+    const name = !claudeOn() ? 'Codex Usage' : !codexOn() ? 'Claude Usage' : 'AI Usage';
+    elements.appTitle.textContent = name;
+    document.title = name + ' Widget';
+    renderCodexUsage(lastCodexSample); // re-decides whether the Codex section shows
+    renderServiceStatus(lastClaudeStatus, lastCodexStatus); // chips follow Track too
+    if (!isGateShown()) {
+        if (isCompactMode) window.electronAPI.setCompactMode(true);
+        else resizeWidget();
+    }
+}
+
+function isLoggedIn() {
+    return !!(credentials && credentials.sessionKey && credentials.organizationId);
+}
+
+/** Past the gates: show the usage views and start Claude's polling if it is on. */
+async function enterMainView() {
+    showMainContent();
+    if (claudeOn()) {
+        await fetchUsageData();
+        startAutoUpdate();
+    }
+}
+
+/**
+ * After a language switch: setUiLang() re-translated the static markup; this
+ * repaints what code draws, from the last data each part saw.
+ */
+function relocalize() {
+    renderCodexUsage(lastCodexSample);
+    renderServiceStatus(lastClaudeStatus, lastCodexStatus);
+    if (latestUsageData) {
+        refreshTimers();
+        refreshExtraTimers();
+        updateCompactResets();
+        if (isBarMode) updateBarUsage(latestUsageData);
+    }
+    refreshSystemStats();
+    window.electronAPI.getAppVersion().then((version) => {
+        elements.settingsVersionLabel.textContent = t('Application Version: v{version}', { version });
+    });
+    const isPortable = window.electronAPI.isPortable;
+    if (elements.autoStartHint) {
+        elements.autoStartHint.textContent = t(isPortable ? 'Not supported in portable mode!' : 'Not supported on Linux');
+    }
+    // applyI18n() just put the taskbar wording back on this label.
+    if (window.electronAPI.platform === 'darwin') {
+        document.getElementById('trayLabel').textContent = t('Hide from Dock');
+    }
+}
+
+/** Everything the login screen and the chooser have in common. */
+function leaveMainView() {
+    elements.loadingContainer.style.display = 'none';
+    elements.noUsageContainer.style.display = 'none';
+    elements.mainContent.style.display = 'none';
+    // Compact's rows would otherwise stay up underneath the gate.
+    elements.compactContent.style.display = 'none';
     // Close any open overlays
     elements.settingsOverlay.style.display = 'none';
     elements.compactSettingsOverlay.style.display = 'none';
@@ -1945,15 +2273,28 @@ function showLoginRequired() {
     alertFired.session_danger = false;
     alertFired.weekly_warn = false;
     alertFired.weekly_danger = false;
+    document.body.classList.add('logged-out');
+    // A session that expires while docked would otherwise leave a bar of
+    // frozen numbers with the login screen hidden behind it.
+    if (isBarMode) window.electronAPI.setBarMode(false);
     // Resize window to fit login content — without this the window stays at
     // the default 155px widget height and the "Log in"/"Manual" buttons are
     // clipped off-screen and unreachable on a frameless, non-resizable window.
-    window.electronAPI.resizeWindow(360);
+    window.electronAPI.resizeWindow(LOGIN_HEIGHT);
+}
+
+/** The login screen or the service chooser — anything standing before the usage views. */
+function isGateShown() {
+    return elements.loginContainer.style.display !== 'none'
+        || elements.serviceChooser.style.display !== 'none';
 }
 
 function showMainContent() {
+    const fromGate = isGateShown();
+    document.body.classList.remove('logged-out');
     elements.loadingContainer.style.display = 'none';
     elements.loginContainer.style.display = 'none';
+    elements.serviceChooser.style.display = 'none';
     elements.noUsageContainer.style.display = 'none';
     // Respect compact mode — don't force mainContent visible if we're in compact
     if (!isCompactMode) {
@@ -1968,11 +2309,18 @@ function showMainContent() {
     elements.settingsBtn.style.display = 'flex';
     elements.refreshBtn.style.display = 'flex';
     elements.graphBtn.style.display = isCompactMode ? 'none' : 'flex';
+    // The gate left the window at LOGIN_HEIGHT and full width. Compact's
+    // geometry is main.js's to set; the widget's is resizeWidget's.
+    if (fromGate) {
+        if (isCompactMode) window.electronAPI.setCompactMode(true);
+        else resizeWidget();
+    }
 }
 
 // Auto-update management
 function startAutoUpdate() {
     stopAutoUpdate();
+    if (!claudeOn() || !isLoggedIn()) return;
     const settings = window._cachedSettings || {};
     const intervalSecs = parseInt(settings.refreshInterval) || 300;
     updateInterval = setInterval(async () => {
@@ -2291,9 +2639,9 @@ async function loadSettings() {
     }
     if (elements.autoStartHint) {
         elements.autoStartHint.style.display = autoStartUnsupported ? 'inline' : 'none';
-        elements.autoStartHint.textContent = isPortable
+        elements.autoStartHint.textContent = t(isPortable
             ? 'Not supported in portable mode!'
-            : 'Not supported on Linux';
+            : 'Not supported on Linux');
     }
     elements.minimizeToTrayToggle.checked = settings.minimizeToTray;
     elements.alwaysOnTopToggle.checked = settings.alwaysOnTop;
@@ -2305,6 +2653,8 @@ async function loadSettings() {
     if (elements.refreshInterval) elements.refreshInterval.value = settings.refreshInterval || '300';
     elements.usageAlertsToggle.checked = settings.usageAlerts !== false;
     if (elements.compactModeToggle) elements.compactModeToggle.checked = !!settings.compactMode;
+    elements.servicesSelect.value = services || 'both';
+    elements.languageSelect.value = settings.language || 'auto';
 
     // Populate org selector if user has organizations
     if (credentials.organizations && credentials.organizations.length > 0) {
@@ -2321,7 +2671,7 @@ async function loadSettings() {
 
     applyTheme(settings.theme);
     if (window.electronAPI.platform === 'darwin') {
-        document.getElementById('trayLabel').textContent = 'Hide from Dock';
+        document.getElementById('trayLabel').textContent = t('Hide from Dock');
     }
 }
 
@@ -2353,13 +2703,27 @@ async function saveSettings() {
         usageAlerts: elements.usageAlertsToggle.checked,
         compactMode: isCompactMode,
         graphVisible: graphVisible,
-        expandedOpen: isExpanded
+        expandedOpen: isExpanded,
+        services: elements.servicesSelect.value || 'both',
+        language: elements.languageSelect.value || 'auto'
     };
     await window.electronAPI.saveSettings(settings);
     window._cachedSettings = settings;
+
+    if (settings.services !== services) {
+        services = settings.services;
+        applyServices();
+        // Turning Claude on without a login goes to the login screen; the
+        // Done handler's resize and restart both stand down while it is up.
+        if (claudeOn() && !isLoggedIn()) {
+            showLoginRequired();
+            return;
+        }
+        if (claudeOn()) fetchUsageData();
+    }
     applyTheme(settings.theme);
     if (window.electronAPI.platform === 'darwin') {
-        document.getElementById('trayLabel').textContent = 'Hide from Dock';
+        document.getElementById('trayLabel').textContent = t('Hide from Dock');
     }
 
     // Re-render resets-at values immediately with new format
