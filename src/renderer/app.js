@@ -595,20 +595,12 @@ function setupEventListeners() {
         });
     });
 
-    // Prevent accidental app hiding: bidirectional coupling between Hide from Taskbar and Show Tray Stats
-    // If user enables "Hide from Taskbar", automatically enable "Show Tray Stats" (ensures tray icon is visible)
-    elements.minimizeToTrayToggle.addEventListener('change', () => {
-        if (elements.minimizeToTrayToggle.checked && !elements.showTrayStatsToggle.checked) {
-            elements.showTrayStatsToggle.checked = true;
-        }
-    });
-
-    // If user disables "Show Tray Stats", automatically disable "Hide from Taskbar" (prevents app from being completely hidden)
-    elements.showTrayStatsToggle.addEventListener('change', () => {
-        if (!elements.showTrayStatsToggle.checked && elements.minimizeToTrayToggle.checked) {
-            elements.minimizeToTrayToggle.checked = false;
-        }
-    });
+    // Hide from Taskbar and Show Tray Stats used to force each other (turning one
+    // on or off flipped the other) so the app could never be left with no handle.
+    // That also made "docked, no taskbar button, no tray icon" impossible to
+    // choose, though the docked bar is always on screen. The safety now lives in
+    // main.js (applyTaskbarVisibility): the taskbar button goes only while a tray
+    // icon or the docked bar can bring the app back, whatever these toggles say.
 
     // Listen for refresh requests from tray
     window.electronAPI.onRefreshUsage(async () => {

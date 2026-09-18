@@ -319,6 +319,18 @@ function showWithFade() {
  * any path that calls plain show() still gets a visible window — an invisible
  * widget with no tray icon is unrecoverable.
  */
+// "Hide from taskbar" is honoured only while something else can bring the app
+// back: a tray icon, or the docked bar, which is always on screen. Undocked with
+// neither, the button stays whatever the setting says — a minimised widget with
+// no taskbar button and no tray icon could never be reached again. That rule
+// used to live in the settings panel as a forced coupling of the two toggles,
+// which made "docked, no taskbar button, no tray icon" impossible to choose.
+function applyTaskbarVisibility() {
+  if (!mainWindow || mainWindow.isDestroyed() || process.platform === 'darwin') return;
+  const hide = store.get('settings.minimizeToTray', false) && (hasTrayIcon() || appbar.isDocked());
+  mainWindow.setSkipTaskbar(hide);
+}
+
 function hideWithFade() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   fadeWindow(mainWindow, mainWindow.getOpacity(), 0, WIDGET_FADE_OUT_MS).then(() => {
@@ -1410,6 +1422,8 @@ function applyBarMode(enabled, edge) {
     // The renderer owns the real height (the layout grew when the system
     // monitor became permanent), so it re-runs its own sizing pass once it
     // knows bar mode is off. WIDGET_HEIGHT above is only a floor.
+    // Undocked: the taskbar button may have to come back (applyTaskbarVisibility).
+    applyTaskbarVisibility();
     mainWindow.webContents.send('bar-mode-changed', false);
     return false;
   }
@@ -1455,6 +1469,7 @@ function applyBarMode(enabled, edge) {
     debugLog('[BarMode] flyout watch=' + watching + ' class=' + trayFlyout.matched());
   }
 
+  applyTaskbarVisibility();
   mainWindow.webContents.send('bar-mode-changed', ok);
   return ok;
 }
@@ -1557,9 +1572,9 @@ ipcMain.handle('save-settings', (event, settings) => {
   if (mainWindow) {
     if (process.platform === 'darwin') {
       if (settings.minimizeToTray) { app.dock.hide(); } else { app.dock.show(); }
-    } else {
-      mainWindow.setSkipTaskbar(settings.minimizeToTray);
     }
+    // Windows/Linux: applied after the tray icons below are created or
+    // destroyed, since whether the button may go depends on them.
     // Skipped mid-dodge: the flyout is open and the bar is deliberately out of
     // the way, so a settings save must not shove it back in front. The dodge
     // ends by re-reading the setting, so the new value still takes effect.
@@ -1582,6 +1597,7 @@ ipcMain.handle('save-settings', (event, settings) => {
     }
   }
 
+  applyTaskbarVisibility();
   return true;
 });
 
@@ -1957,7 +1973,8 @@ app.whenReady().then(async () => {
     if (process.platform === 'darwin') {
       if (minimizeToTray) app.dock.hide();
     } else {
-      if (minimizeToTray) mainWindow.setSkipTaskbar(true);
+      // Re-applied once the startup dock lands (applyBarMode).
+      applyTaskbarVisibility();
     }
     mainWindow.setAlwaysOnTop(alwaysOnTop, 'floating');
   }
