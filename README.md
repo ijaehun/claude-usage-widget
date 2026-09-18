@@ -1,315 +1,132 @@
-# Claude Usage Widget
+# AI Usage Widget
 
-A beautiful, standalone desktop widget for **Windows, macOS, and Linux** that displays your Claude.ai usage statistics in real-time.
+A desktop widget for **Windows** that shows your **Claude** and **OpenAI Codex** usage limits side by side — plus whether both services are up, and your PC's CPU, GPU and RAM.
 
-> 🇰🇷 **한국어 설치 안내는 [여기](#한국어-설치-안내)** · [설치 파일 바로 받기](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-Setup.exe)
+> 🇰🇷 **한국어 안내는 [여기](#한국어-안내)** · [설치 파일 바로 받기](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-Setup.exe)
 
-![Claude Usage Widget - Main](assets/screenshot-main.png)
+Built on **[Claude Usage Widget](https://github.com/SlavomirDurej/claude-usage-widget) by Slavomir Durej** — thank you for making it and sharing it under the MIT license. See [Thanks](#thanks).
 
----
-
-## Features
-
-🎯 **Real-time Usage Tracking** — Monitor both session and weekly usage limits  
-📊 **Visual Progress Bars** — Clean, gradient progress indicators with configurable warning thresholds  
-⏱️ **Countdown Timers** — Circular timers showing time elapsed in the current session window  
-🔄 **Auto-refresh** — Updates every 5 minutes automatically, with animated refresh indicator  
-📈 **Usage History Graph** — Toggleable 7-day chart showing session and weekly trends over time  
-🌍 **Currency Support** — Extra usage displays your account's billing currency (€, £, $)  
-🎨 **Modern UI** — Sleek, draggable widget with dark and light themes  
-🔒 **Secure** — Encrypted credential storage  
-📍 **Always on Top** — User-controlled, stays visible across all workspaces  
-💾 **System Tray** — Minimizes to tray for easy access  
-⚙️ **Settings Panel** — Persistent preferences for startup, theme, tray, thresholds, and date/time formats  
-🔔 **Usage Alerts** — Desktop notifications when usage crosses configurable warn/danger thresholds  
-🔔 **Update Notifications** — Automatic check for new releases on startup  
-🕐 **Configurable Date & Time Formats** — 12h/24h time, and flexible weekly reset date display  
-📐 **Compact Mode** — Minimal view for when you just need a quick glance  
-🧩 **Per-Model Breakdowns** — Rows and chart lines for Sonnet, Opus, Fable, Cowork, OAuth Apps, and Design usage when your account reports them  
-💳 **Credit Clarity** — Monthly spend cap and credit balance shown separately, with a promo-vs-purchased split and expiry warnings  
-👥 **Multi-Account Support** — Run isolated instances for separate accounts via the `--profile` flag (see below)  
-
-> For a full history of changes by version, see [Release Notes](RELEASE_NOTES_1.7.X.md).
+![AI Usage Widget](assets/readme-widget.png)
 
 ---
 
-## Screenshots
+## Download
 
-### Settings Panel
-
-![Claude Usage Widget - Settings](assets/screenshot-settings.png)
-
-
-### Settings Options
-
-- ⚙️ **Launch at startup** — Auto-start with Windows or macOS login
-- 📌 **Hide from taskbar** — Tray-only mode
-- 🎨 **Theme selector** — Dark / Light / System
-- ⚠️ **Warning thresholds** — Configurable amber and red levels for usage bars
-- 🔔 **Usage alerts** — Desktop notifications at warn/danger thresholds
-- 🕐 **Time format** — 12h or 24h
-- 📅 **Date format** — Controls how the weekly reset date is displayed
-- 📐 **Compact mode** — Minimal view
-
----
-
-## 한국어 설치 안내
-
-Windows 전용 개인 빌드예요. Claude 사용량에 더해 **Codex 사용량**, **시스템 모니터**(CPU·GPU·RAM), **Claude 서비스 상태**, **화면 가장자리 도킹**이 들어 있어요.
-
-### 설치
-
-1. **[설치 파일 받기](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-Setup.exe)**
-   (설치 없이 쓰려면 **[포터블 버전](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-portable.exe)**)
-2. 받은 파일을 실행해요. **"Windows의 PC 보호"** 경고가 뜨면 **추가 정보 → 실행**을 누르세요. 코드 서명이 없어서 뜨는 정상적인 경고예요.
-3. 설치 후 위젯을 실행하고, 로그인 창에서 **본인 claude.ai 계정**으로 로그인하면 끝이에요. API 키는 필요 없어요.
-
-### 업데이트
-
-자동 업데이트는 없어요. 새 버전이 나오면 **위젯을 종료한 뒤** 위 링크에서 설치 파일을 다시 받아 설치하세요. 기존 설치를 덮어쓰고, 로그인과 설정은 그대로 유지돼요.
-
-### Codex 사용량 (ChatGPT 5시간·주간 한도)
-
-두 가지 방법 중 하나로 자동 표시돼요. 둘 다 chatgpt.com에서 **실시간**으로 받아와서 다른 PC나 웹에서 쓴 양도 함께 반영돼요.
-
-- **Codex(CLI/앱)를 쓰는 경우:** 아무것도 안 해도 자동으로 떠요. Codex가 저장해 둔 로그인을 재사용해요.
-- **Codex를 안 쓰는 경우:** 설정(⚙️)의 **Connect ChatGPT** 버튼을 누르면 **평소 쓰는 브라우저**가 열려요. 거기서 ChatGPT에 로그인하면 위젯에 자동 연결돼요. 브라우저에서 로그인하는 방식이라 구글 계정도 문제없고, 한 번 연결하면 계속 유지돼요.
-- Codex도 안 쓰고 연결도 안 했으면 Codex 줄은 숨겨져요.
-
-> 참고: 사용량은 OpenAI/Anthropic의 공식 API가 아니라, 각 서비스 웹사이트가 내부적으로 쓰는 주소에서 본인 계정 것을 읽어와요(Claude 사용량도 동일한 방식). 본인 데이터라 문제는 없지만, 서비스가 바뀌면 표시가 멈출 수 있어요.
-
-### 설정 팁
-
-톱니바퀴(⚙️) 설정에서 바꿀 수 있어요.
-
-| 설정 | 설명 |
+| File | Use |
 | --- | --- |
-| Launch at startup | 윈도우 시작 시 자동 실행 |
-| Dock to screen edge | 화면 아래 가장자리에 얇은 바로 고정 |
-| Hide from taskbar | 작업표시줄에서 숨기기 |
-| Always on top | 항상 다른 창 위에 표시 |
-| Show tray stats | 알림 영역에 트레이 아이콘 표시 |
+| **[Claude-Usage-Widget-1.7.6-win-Setup.exe](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-Setup.exe)** | Installer (recommended) |
+| **[Claude-Usage-Widget-1.7.6-win-portable.exe](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-portable.exe)** | Runs without installing |
 
-- **도킹을 켤 때는 `Show tray stats`도 켜두는 걸 추천해요.** 트레이 아이콘이 없으면 바 오른쪽 끝 버튼이 도킹을 푸는 유일한 방법인데, 폭이 좁은 모니터에서는 이 버튼이 잘릴 수 있어요.
-- GPU·VRAM·온도는 **NVIDIA 그래픽카드**에서만 표시돼요.
+Both links always point at the [latest release](../../releases/latest). The file names keep the original project's name and version so these links never change.
 
-### 소스에서 직접 빌드 (선택)
+**First run**
 
-[Git](https://git-scm.com)과 [Node.js](https://nodejs.org)(LTS)가 필요해요. **Dropbox·OneDrive 같은 동기화 폴더 밖**에서 진행하세요. 안에서 하면 빌드가 실패해요.
+1. The app isn't code-signed, so Windows SmartScreen warns. Click **More info → Run anyway**.
+2. Choose what to track: **Claude**, **Codex**, or **both**.
+3. **Claude:** log in with your own claude.ai account (Google sign-in works). If the login window gives you trouble, **Manual** lets you paste your session key instead.
+   **Codex:** automatic if Codex is signed in on this PC; otherwise Settings → **Connect ChatGPT** signs in through your normal browser.
+
+**Updating:** close the widget, run the new installer over the old one. Login and settings are kept.
+
+---
+
+## What it shows
+
+- **Claude** — session (5-hour) and weekly limits, per-model weekly limits such as Fable, countdowns to each reset, a 7-day history graph, and desktop alerts at your thresholds.
+- **Codex** — the same session and weekly limits, live from chatgpt.com, so use on other devices and the web counts too. Percentages are *used*, like Claude's.
+- **Service status** — Claude Code, claude.ai and the Claude API; Codex CLI, VS Code extension, Web and API. Click the dot for details.
+- **System** — CPU, GPU, VRAM and RAM (GPU on NVIDIA cards). Click the dot next to CPU for model, temperature, power and shared GPU memory.
+- **Three views** — the widget, a compact view, or a thin bar docked to a screen edge that maximised windows stop at.
+- **English or Korean** — follows your Windows language, or pick one in Settings.
+
+![Compact view](assets/readme-compact.png)
+
+![Docked bar](assets/readme-bar.png)
+
+---
+
+## Tips
+
+- **Track** in Settings switches between Claude, Codex or both at any time. The title follows: *AI Usage* for both.
+- **Docked bar with no tray icon:** the button at the right end of the bar is the way back to the widget.
+- **Hide from both the taskbar and the tray** while docked: turn **Hide from taskbar** on and **Show tray stats** off. While undocked, the taskbar button stays so the widget can't get lost.
+- **Two Claude accounts:** start a second copy with `--profile=<name>` for its own login and settings.
+
+---
+
+## Privacy
+
+- Your claude.ai session key and ChatGPT sign-in are stored **only on your PC**, encrypted with Windows' own protection.
+- The app talks only to claude.ai, chatgpt.com / auth.openai.com (if you use Codex) and the public status pages (status.claude.com, status.openai.com).
+- **Log out** clears the claude.ai session and the sign-in provider's cookies (Google, Apple, Microsoft).
+- Usage comes from the same internal endpoints the Claude and ChatGPT websites use for your own account. There's no public usage API, so a site change can pause the numbers until the app is updated.
+
+---
+
+## Build from source
+
+Needs [Git](https://git-scm.com) and [Node.js](https://nodejs.org) (LTS). Work **outside** Dropbox/OneDrive-style synced folders — the build fails inside them.
 
 ```bash
 git clone https://github.com/ijaehun/claude-usage-widget.git
 cd claude-usage-widget
 npm ci
-npm run build:win
-```
-
-`dist\` 폴더에 설치 파일이 만들어져요. 빌드 없이 바로 실행만 해보려면 `npm start`를 쓰세요.
-
----
-
-## Installation
-
-### Download Pre-built Release
-
-**Windows:**
-1. Download **[Claude-Usage-Widget-1.7.6-win-Setup.exe](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-Setup.exe)** (installer) or **[Claude-Usage-Widget-1.7.6-win-portable.exe](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-portable.exe)** (no install needed). These always point at the latest release; older builds are on [Releases](../../releases)
-2. Run the installer or portable exe
-3. Launch "Claude Usage Widget" from the Start Menu (installer) or directly (portable)
-4. **To launch at Windows startup (portable only):** Press `Win+R`, type `shell:startup`, and copy the portable `.exe` into that folder. To update, copy the new version in and delete the old one.
-
-**macOS:**
-1. Download the latest `Claude-Usage-Widget-{version}-macOS-arm64.dmg` (Apple Silicon) or `Claude-Usage-Widget-{version}-macOS-x64.dmg` (Intel) from [Releases](../../releases)
-2. Open the DMG and drag the app to your Applications folder
-3. Launch "Claude Usage Widget" from Applications
-
-> **⚠️ macOS Security Notice:** Because this app is not yet notarized with Apple, macOS Gatekeeper may show a "damaged or can't be opened" warning. To fix this, run the following command in Terminal after installing:
-> ```
-> xattr -cr /Applications/Claude\ Usage\ Widget.app
-> ```
-> Then try launching the app again.
-
-**Linux:**
-1. Download the latest `Claude-Usage-Widget-{version}-linux-x86_64.AppImage` (Intel/AMD) or `Claude-Usage-Widget-{version}-linux-arm64.AppImage` (ARM) from [Releases](../../releases)
-2. Make it executable: `chmod +x Claude-Usage-Widget-*.AppImage`
-3. Run it: `./Claude-Usage-Widget-*.AppImage`
-
-> **Note:** AppImage runs without installation on most Linux distributions. On Ubuntu 22.04+, you may need to install a dependency first:
-> ```bash
-> sudo apt install libfuse2
-> ```
-
-#### Linux: Desktop Launcher & Autostart (optional)
-
-By default the AppImage runs from wherever you put it. To get a clickable icon in your app launcher (and optionally launch at login), follow these steps.
-
-**1. Place the AppImage somewhere permanent:**
-```bash
-mkdir -p ~/.local/bin
-mv Claude-Usage-Widget-*.AppImage ~/.local/bin/claude-usage-widget.AppImage
-chmod +x ~/.local/bin/claude-usage-widget.AppImage
-```
-
-**2. Create a desktop entry:**
-```bash
-cat > ~/.local/share/applications/claude-usage-widget.desktop << EOF
-[Desktop Entry]
-Name=Claude Usage Widget
-Comment=Monitor Claude.ai usage
-Exec=$HOME/.local/bin/claude-usage-widget.AppImage --no-sandbox
-Icon=$HOME/.local/bin/claude-usage-widget.AppImage
-Terminal=false
-Type=Application
-Categories=Utility;
-StartupNotify=true
-EOF
-```
-
-> **Note:** The `--no-sandbox` flag is required for Electron-based AppImages on most Linux systems due to sandbox namespace restrictions. This is an Electron/Chrome limitation, not specific to this widget.
-
-**3. Register the entry:**
-```bash
-update-desktop-database ~/.local/share/applications/
-```
-
-The widget should now appear in your application launcher. Test it by launching from your app menu before proceeding to autostart.
-
-**4. Autostart at login (optional):**
-```bash
-mkdir -p ~/.config/autostart
-cp ~/.local/share/applications/claude-usage-widget.desktop ~/.config/autostart/
+npm start           # run it
+npm run build:win   # installer and portable .exe in dist\
 ```
 
 ---
 
-### Build from Source
+## 한국어 안내
 
-**Prerequisites:**
-- Node.js 18+ ([Download](https://nodejs.org))
-- npm (comes with Node.js)
+Claude와 Codex 사용량을 한눈에 보여주는 Windows용 위젯이에요. 두 서비스가 정상인지, 내 PC의 CPU·GPU·RAM 상태도 함께 보여줘요. 한국어 화면을 지원해요(Windows 언어가 한국어면 자동).
 
-```bash
-git clone https://github.com/ijaehun/claude-usage-widget.git
-cd claude-usage-widget
-npm install
-npm start
-```
+### 설치
 
+1. **[설치 파일 받기](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-Setup.exe)** (설치 없이 쓰려면 **[포터블 버전](https://github.com/ijaehun/claude-usage-widget/releases/latest/download/Claude-Usage-Widget-1.7.6-win-portable.exe)**)
+2. 받은 파일을 실행해요. **"Windows의 PC 보호"** 경고가 뜨면 **추가 정보 → 실행**을 누르세요. 코드 서명이 없어서 뜨는 정상적인 경고예요.
+3. 처음 실행하면 **무엇을 추적할지**(Claude / Codex / 둘 다) 골라요.
+   - **Claude:** 로그인 창에서 본인 claude.ai 계정으로 로그인해요. 구글 로그인도 돼요. API 키는 필요 없어요.
+   - **Codex:** 이 PC에 Codex가 로그인돼 있으면 자동이에요. 아니면 설정의 **ChatGPT 연결**을 누르면 평소 쓰는 브라우저에서 로그인할 수 있어요.
 
----
+### 업데이트
 
-## Usage
+자동 업데이트는 없어요. 새 버전이 나오면 **위젯을 종료한 뒤** 위 링크에서 다시 받아 설치하세요. 로그인과 설정은 그대로 유지돼요.
 
-### First Launch
+### 알아두면 좋은 것
 
-1. Launch the widget
-2. Click "Login to Claude" when prompted
-3. A browser window will open — log in to your Claude.ai account
-4. The widget will automatically capture your session
-5. Usage data will start displaying immediately
+- 설정의 **추적**에서 Claude / Codex / 둘 다를 언제든 바꿀 수 있어요.
+- 상태 점(초록 점)을 누르면 서비스 상태를, CPU 옆 점을 누르면 시스템 정보를 자세히 볼 수 있어요.
+- **화면 끝에 붙이기**를 켜면 화면 가장자리에 얇은 바로 고정돼요. 트레이 아이콘을 꺼 두었다면 바 오른쪽 끝 버튼이 위젯으로 돌아가는 방법이에요.
+- 붙인 상태에서는 **작업 표시줄 숨김**을 켜고 **트레이에 표시**를 끄면 작업 표시줄과 트레이 양쪽에서 숨길 수 있어요.
+- GPU·VRAM·온도는 **NVIDIA 그래픽카드**에서만 표시돼요.
+- 사용량은 공식 API가 아니라 각 서비스 웹사이트가 내 계정에 쓰는 주소에서 읽어와요. 서비스가 바뀌면 표시가 잠시 멈출 수 있어요.
 
-### Widget Controls
+### 감사 인사
 
-- **Drag** — Click and drag the title bar to move the widget
-- **Refresh** — Click the refresh icon to update data immediately
-- **Graph** — Click the graph icon to toggle usage history
-- **Minimize** — Click the minus icon to hide to system tray / dock
-- **Close** — Click the X to Close the app
-
-### System Tray
-
-Right-click the tray icon for: Show/Hide, Refresh, Re-login, Settings, Exit.
-
-### Multi-Account Support (Advanced)
-
-Launch with `--profile=<name>` to run a fully isolated instance — its own session, cookies, and settings — so you can track two Claude accounts side by side without them interfering.
-
-Example: `claude-usage-widget --profile=work`
-
-This is a power-user feature, tested by us but not yet broadly validated by the community — if you hit issues, please open a GitHub Discussion.
+이 위젯은 **Slavomir Durej** 님의 **[Claude Usage Widget](https://github.com/SlavomirDurej/claude-usage-widget)** 을 바탕으로 만들었어요. 좋은 프로젝트를 만들고 MIT 라이선스로 공개해 주셔서 감사합니다.
 
 ---
 
-## Understanding the Display
+## Thanks
 
-### Current Session & Weekly Limit
+This project exists because of **[Slavomir Durej](https://github.com/SlavomirDurej)**, who created [Claude Usage Widget](https://github.com/SlavomirDurej/claude-usage-widget) and released it under the MIT license. The login flow, the usage display, settings, compact mode and the history graph are his work and his contributors'. Thank you.
 
-| Column | Description |
-|--------|-------------|
-| Session Used | Progress bar showing usage from 0–100% |
-| Elapsed | Circular timer showing how far through the window you are |
-| Resets In | Countdown until the window resets |
-| Resets At | Actual local clock time / date when the window resets |
+Contributors to the original project:
 
-**Color Coding:**
-- 🟣 Purple: Normal usage (below warning threshold, default 75%)
-- 🟠 Orange: High usage (above warning threshold)
-- 🔴 Red: Critical usage (above danger threshold, default 90%)
+- [@cwil2072](https://github.com/cwil2072) — macOS minimize/restore fix, usage history graph
+- [@dion-jy](https://github.com/dion-jy) — login flow architecture improvements
+- [@goooseman](https://github.com/goooseman) — login window security improvements
+- [@sergkuzn](https://github.com/sergkuzn) — Linux desktop launcher & autostart documentation
+- [@Dolphin2ii](https://github.com/Dolphin2ii) — Electron/electron-builder security update
+- [@torsten-liermann](https://github.com/torsten-liermann) — per-model weekly limit support (Fable)
+- [@gastyg](https://github.com/gastyg) — Fable row for compact mode
+- [@irishpolyglot](https://github.com/irishpolyglot) — Fable timer-pairing bug fix
 
----
-
-## Privacy & Security
-
-- Credentials stored **locally only** using encrypted storage
-- No data sent to any third-party servers
-- Only communicates with the official Claude.ai API
-- Logout clears all session data, cookies, and Electron session storage
-
----
-
-## Troubleshooting
-
-**"Login Required" keeps appearing** — Session may have expired. Click "Login to Claude" to re-authenticate.
-
-**Widget not updating** — Check internet connection, click refresh manually, or try re-logging in from the tray menu.
-
-**Build errors** — Clean reinstall resolves most issues:
-```bash
-rm -rf node_modules package-lock.json
-npm install
-```
-
-If issues persist, open a [Support discussion](../../discussions/categories/support) with your OS, Node.js version, and full error output.
-
----
-
-## Roadmap
-
-- [x] macOS support
-- [x] Linux support
-- [x] Settings panel
-- [x] Remember window position
-- [x] Custom warning thresholds
-- [x] Configurable date & time formats
-- [x] Update notifications
-- [x] Usage alerts at thresholds
-- [x] Compact mode
-- [x] Usage history graph
-- [x] Currency support
-- [x] Organization/Teams support
-- [ ] Keyboard shortcuts
-
----
-
-## Contributors
-
-Special thanks to these contributors who have improved the widget:
-
-- [@cwil2072](https://github.com/cwil2072) - macOS minimize/restore fix, usage history graph
-- [@dion-jy](https://github.com/dion-jy) - Login flow architecture improvements
-- [@goooseman](https://github.com/goooseman) - Login window security improvements
-- [@sergkuzn](https://github.com/sergkuzn) - Linux desktop launcher & autostart documentation
-- [@Dolphin2ii](https://github.com/Dolphin2ii) - Electron/electron-builder security update
-- [@torsten-liermann](https://github.com/torsten-liermann) - Per-model weekly limit support (Fable)
-- [@gastyg](https://github.com/gastyg) - Fable row for compact mode
-- [@irishpolyglot](https://github.com/irishpolyglot) - Fable timer-pairing bug fix
+For macOS and Linux, and for the original feature set, use the [original project](https://github.com/SlavomirDurej/claude-usage-widget).
 
 ---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE) - see the LICENSE file for details.
-
----
-
-*Built with Electron · [Releases](../../releases) · [Discussions](../../discussions)*
+[MIT](LICENSE). The original copyright (© 2024 Slavomir Durej) is kept, as the license requires.
