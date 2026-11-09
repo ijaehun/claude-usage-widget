@@ -65,9 +65,9 @@ const CODEX_WATCHED = [
   { id: 'api', label: 'Codex API', short: 'API', match: (n) => n === 'codex api' },
 ];
 
-function makeSource(summaryUrl, pageUrl, watched) {
+function makeSource(summaryUrl, pageUrl, watched, convert = null) {
   return {
-    summaryUrl, pageUrl, watched,
+    summaryUrl, pageUrl, watched, convert,
     timer: null,
     stopped: false,
     failures: 0,
@@ -77,7 +77,33 @@ function makeSource(summaryUrl, pageUrl, watched) {
 }
 
 const claude = makeSource('https://status.claude.com/api/v2/summary.json', 'https://status.claude.com', CLAUDE_WATCHED);
-const codex = makeSource('https://status.openai.com/api/v2/summary.json', 'https://status.openai.com', CODEX_WATCHED);
+// status.openai.com's /api/v2/summary.json stopped listing the Codex
+// components (2026-11-09: 25 components, none of CLI / VS Code extension /
+// Codex Web / Codex API). The page's own data endpoint still has them. There a
+// component is operational unless it appears in `affected_components`; an
+// affected status we do not recognise reads as unknown, never as green.
+const INCIDENT_IO_STATUS = {
+  operational: 'operational',
+  degraded_performance: 'degraded_performance',
+  partial_outage: 'partial_outage',
+  full_outage: 'major_outage',
+  under_maintenance: 'under_maintenance',
+};
+
+function fromIncidentIo(json) {
+  const s = (json && json.summary) || {};
+  const affected = new Map((Array.isArray(s.affected_components) ? s.affected_components : [])
+    .filter(Boolean)
+    .map((a) => [a.component_id || a.id, a.status]));
+  return {
+    components: (Array.isArray(s.components) ? s.components : []).filter(Boolean).map((c) => ({
+      name: c.name,
+      status: affected.has(c.id) ? (INCIDENT_IO_STATUS[affected.get(c.id)] || 'unknown') : 'operational',
+    })),
+  };
+}
+
+const codex = makeSource('https://status.openai.com/proxy/status.openai.com', 'https://status.openai.com', CODEX_WATCHED, fromIncidentIo);
 const SOURCES = [claude, codex];
 
 // Statuspage's component states, ordered worst-last. `unknown` is ours, for a
@@ -219,7 +245,7 @@ async function poll(src) {
   if (src.stopped) return;
   try {
     const json = await getJson(src.summaryUrl);
-    src.sample = parseSummary(json, src.watched);
+    src.sample = parseSummary(src.convert ? src.convert(json) : json, src.watched);
     src.lastError = null;
     src.failures = 0;
     schedule(src, POLL_MS);
