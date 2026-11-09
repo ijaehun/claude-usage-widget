@@ -40,6 +40,8 @@ const ABN_FULLSCREENAPP = 0x0002;
 const ABN_WINDOWARRANGE = 0x0003;
 
 // SetWindowPos flags
+const SWP_NOSIZE = 0x0001;
+const SWP_NOMOVE = 0x0002;
 const SWP_NOZORDER = 0x0004;
 const SWP_NOACTIVATE = 0x0010;
 const SWP_SHOWWINDOW = 0x0040;
@@ -61,6 +63,8 @@ let koffi = null;
 let SHAppBarMessage = null;
 let SetWindowPos = null;
 let GetWindowRect = null;
+let GetForegroundWindow = null;
+let MonitorFromWindow = null;
 let APPBARDATA = null;
 let loadError = null;
 
@@ -105,6 +109,8 @@ function ensureLoaded() {
     GetWindowRect = user32.func(
       'bool __stdcall GetWindowRect(uintptr_t hWnd, _Out_ APPBAR_RECT *lpRect)'
     );
+    GetForegroundWindow = user32.func('uintptr_t __stdcall GetForegroundWindow()');
+    MonitorFromWindow = user32.func('uintptr_t __stdcall MonitorFromWindow(uintptr_t hWnd, uint32 dwFlags)');
     return true;
   } catch (err) {
     loadError = err.message;
@@ -258,15 +264,44 @@ function reassertPlacement() {
   }
 }
 
-function onShellNotification(wParam) {
+function onShellNotification(wParam, opening) {
   if (!state) return;
   const code = Number(wParam);
   if (code === ABN_POSCHANGED || code === ABN_WINDOWARRANGE || code === ABN_STATECHANGE) {
     // The taskbar moved, changed size, or another appbar appeared — re-reserve.
     applyBounds(reservePosition());
   } else if (code === ABN_FULLSCREENAPP) {
-    // A fullscreen app took over. Nothing to do: leaving the reservation in
-    // place is correct, and fighting for z-order here only causes flicker.
+    // A fullscreen app opened (lParam nonzero) or closed. The reservation stays;
+    // only z-order changes, and main.js owns that.
+    if (state.onFullscreen) state.onFullscreen(opening);
+  }
+}
+
+/**
+ * The foreground window, if it is on the bar's monitor — the fullscreen app
+ * when ABN_FULLSCREENAPP has just said one opened. 0 otherwise, so fullscreen
+ * video on the other monitor leaves the bar alone.
+ */
+function fullscreenWindowOnBarMonitor() {
+  if (!state) return 0;
+  try {
+    const fg = Number(GetForegroundWindow());
+    if (!fg || fg === state.hwnd) return 0;
+    const MONITOR_DEFAULTTONEAREST = 2;
+    return Number(MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST))
+      === Number(MonitorFromWindow(state.hwnd, MONITOR_DEFAULTTONEAREST)) ? fg : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Put the bar directly behind `hwnd` in the z-order. */
+function placeBehind(hwnd) {
+  if (!state || !hwnd) return false;
+  try {
+    return !!SetWindowPos(state.hwnd, hwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+  } catch {
+    return false;
   }
 }
 
@@ -286,9 +321,10 @@ function isDocked() {
  * @param {BrowserWindow} win
  * @param {'top'|'bottom'|'left'|'right'} edgeName
  * @param {number} thickness Bar size in DIP (height for top/bottom).
+ * @param {(opening: boolean) => void} [onFullscreen] ABN_FULLSCREENAPP handler.
  * @returns {boolean} true if the appbar was registered
  */
-function dock(win, edgeName = 'bottom', thickness = 34) {
+function dock(win, edgeName = 'bottom', thickness = 34, onFullscreen = null) {
   if (!ensureLoaded()) return false;
   if (state) undock();
 
@@ -303,13 +339,14 @@ function dock(win, edgeName = 'bottom', thickness = 34) {
     return false;
   }
 
-  state = { win, hwnd, edge, thickness, unhook: null };
+  state = { win, hwnd, edge, thickness, onFullscreen, unhook: null };
 
   // The shell posts ABN_* codes here. Without this the bar would never notice
   // the taskbar moving and would end up overlapping it.
-  win.hookWindowMessage(WM_APPBAR_CALLBACK, (wParam) => {
+  win.hookWindowMessage(WM_APPBAR_CALLBACK, (wParam, lParam) => {
     try {
-      onShellNotification(typeof wParam === 'bigint' ? wParam : Buffer.isBuffer(wParam) ? wParam.readUInt32LE(0) : wParam);
+      onShellNotification(typeof wParam === 'bigint' ? wParam : Buffer.isBuffer(wParam) ? wParam.readUInt32LE(0) : wParam,
+        Buffer.isBuffer(lParam) ? lParam.some((b) => b !== 0) : !!lParam);
     } catch (err) {
       console.error('[AppBar] notification handler failed:', err.message);
     }
@@ -373,4 +410,7 @@ function getTaskbarInfo() {
   return { edge: names[data.uEdge] || 'bottom', rect: data.rc };
 }
 
-module.exports = { dock, undock, forceRemove, isDocked, isSupported, getTaskbarInfo };
+module.exports = {
+  dock, undock, forceRemove, isDocked, isSupported, getTaskbarInfo,
+  fullscreenWindowOnBarMonitor, placeBehind,
+};

@@ -1365,6 +1365,14 @@ ipcMain.on('show-notification', (event, { title, body }) => {
 // fires precisely when the flag is clear.
 let flyoutDodging = false;
 
+// Same, while a fullscreen app (video, game) on the bar's monitor is up. A
+// topmost bar would otherwise sit on top of the video.
+let fullscreenDodging = false;
+
+function isDodging() {
+  return flyoutDodging || fullscreenDodging;
+}
+
 // The z-order the bar should hold when nothing is dodging out of its way.
 function restoreAlwaysOnTop() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1393,8 +1401,26 @@ function onFlyoutChange(open) {
   if (open) {
     mainWindow.setAlwaysOnTop(false);
     trayFlyout.stepAside(mainHwnd());
-  } else {
+  } else if (!fullscreenDodging) {
     restoreAlwaysOnTop();
+  }
+}
+
+// ABN_FULLSCREENAPP from the shell. Steps behind the fullscreen window the same
+// way as for the flyout (clearing topmost alone lands us in front of it).
+// Fullscreen on the other monitor is ignored.
+function onFullscreenApp(opening) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  debugLog('[BarMode] fullscreen app ' + (opening ? 'opened' : 'closed'));
+  if (opening) {
+    const target = appbar.fullscreenWindowOnBarMonitor();
+    if (!target) return;
+    fullscreenDodging = true;
+    mainWindow.setAlwaysOnTop(false);
+    appbar.placeBehind(target);
+  } else if (fullscreenDodging) {
+    fullscreenDodging = false;
+    if (!flyoutDodging) restoreAlwaysOnTop();
   }
 }
 
@@ -1430,6 +1456,7 @@ function applyBarMode(enabled, edge) {
     // Only the docked bar sits where the flyout opens, so the watch ends with
     // the dock. stop() reports closed first, so this cannot strand us aside.
     trayFlyout.stop();
+    fullscreenDodging = false;
     restoreAlwaysOnTop();
 
     // The renderer owns the real height (the layout grew when the system
@@ -1455,7 +1482,8 @@ function applyBarMode(enabled, edge) {
     store.set('preDockBounds', mainWindow.getBounds());
   }
 
-  const ok = appbar.dock(mainWindow, targetEdge, BAR_HEIGHT);
+  fullscreenDodging = false;
+  const ok = appbar.dock(mainWindow, targetEdge, BAR_HEIGHT, onFullscreenApp);
   debugLog('[BarMode] dock=' + ok + ' bounds=' + JSON.stringify(mainWindow.getBounds()));
   if (!ok) store.delete('preDockBounds');
   store.set('settings.barMode', ok);
@@ -1591,7 +1619,7 @@ ipcMain.handle('save-settings', (event, settings) => {
     // Skipped mid-dodge: the flyout is open and the bar is deliberately out of
     // the way, so a settings save must not shove it back in front. The dodge
     // ends by re-reading the setting, so the new value still takes effect.
-    if (!flyoutDodging) {
+    if (!isDodging()) {
       mainWindow.setAlwaysOnTop(settings.alwaysOnTop, 'floating');
     }
   }
@@ -1923,7 +1951,7 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   //
   // Guarded on isAlwaysOnTop(): see the interval in whenReady() for why a
   // redundant call is not free.
-  if (mainWindow && !mainWindow.isDestroyed() && !flyoutDodging
+  if (mainWindow && !mainWindow.isDestroyed() && !isDodging()
       && !mainWindow.isAlwaysOnTop()) {
     const alwaysOnTop = store.get('settings.alwaysOnTop', true);
     if (alwaysOnTop) {
@@ -2009,8 +2037,6 @@ app.whenReady().then(async () => {
   // them. Measured: two topmost windows, ours behind, one redundant call and
   // ours is in front.
   //
-  // src/appbar.js already declines to fight for z-order on ABN_FULLSCREENAPP
-  // because it only causes flicker; this was fighting on its behalf.
   //
   // The disruption this was written to repair is a lost topmost FLAG, and the
   // guard still catches that: isAlwaysOnTop() is not a stale cache, it follows
@@ -2020,7 +2046,7 @@ app.whenReady().then(async () => {
   // the flag nor our z-order, so this now fires only when something really
   // did clear it.
   setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed() && !flyoutDodging
+    if (mainWindow && !mainWindow.isDestroyed() && !isDodging()
         && !mainWindow.isAlwaysOnTop()) {
       const alwaysOnTopSetting = store.get('settings.alwaysOnTop', true);
       if (alwaysOnTopSetting) {
