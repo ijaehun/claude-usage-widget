@@ -65,6 +65,10 @@ let SetWindowPos = null;
 let GetWindowRect = null;
 let GetForegroundWindow = null;
 let MonitorFromWindow = null;
+let GetWindow = null;
+let GetWindowLongW = null;
+let IsWindowVisible = null;
+let DwmGetWindowAttribute = null;
 let APPBARDATA = null;
 let loadError = null;
 
@@ -111,6 +115,12 @@ function ensureLoaded() {
     );
     GetForegroundWindow = user32.func('uintptr_t __stdcall GetForegroundWindow()');
     MonitorFromWindow = user32.func('uintptr_t __stdcall MonitorFromWindow(uintptr_t hWnd, uint32 dwFlags)');
+    GetWindow = user32.func('uintptr_t __stdcall GetWindow(uintptr_t hWnd, uint32 uCmd)');
+    GetWindowLongW = user32.func('int32 __stdcall GetWindowLongW(uintptr_t hWnd, int nIndex)');
+    IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(uintptr_t hWnd)');
+    DwmGetWindowAttribute = koffi.load('dwmapi.dll').func(
+      'int32 __stdcall DwmGetWindowAttribute(uintptr_t hWnd, uint32 attr, _Out_ uint32 *value, uint32 size)'
+    );
     return true;
   } catch (err) {
     loadError = err.message;
@@ -305,6 +315,32 @@ function placeBehind(hwnd) {
   }
 }
 
+/**
+ * True when an ordinary (non-topmost) window sits above the bar and overlaps
+ * it. The bar keeps its topmost flag in this state, so the flag check alone
+ * misses it. Seen with PowerPoint snapped to half the screen: its drop shadow
+ * lay over the bar until the bar was clicked.
+ */
+function buriedUnderNormalWindow() {
+  if (!state) return false;
+  try {
+    const bar = {};
+    if (!GetWindowRect(state.hwnd, bar)) return false;
+    const GW_HWNDPREV = 3, GWL_EXSTYLE = -20, WS_EX_TOPMOST = 0x8, DWMWA_CLOAKED = 14;
+    let h = Number(GetWindow(state.hwnd, GW_HWNDPREV));
+    for (let i = 0; h && i < 1000; i++, h = Number(GetWindow(h, GW_HWNDPREV))) {
+      if (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_TOPMOST) continue;
+      if (!IsWindowVisible(h)) continue;
+      const cloaked = [0];
+      if (DwmGetWindowAttribute(h, DWMWA_CLOAKED, cloaked, 4) === 0 && cloaked[0]) continue;
+      const r = {};
+      if (GetWindowRect(h, r) && r.left < bar.right && r.right > bar.left
+          && r.top < bar.bottom && r.bottom > bar.top) return true;
+    }
+  } catch {}
+  return false;
+}
+
 // --- Public API -------------------------------------------------------------
 
 /** Whether docking is possible on this machine. */
@@ -412,5 +448,5 @@ function getTaskbarInfo() {
 
 module.exports = {
   dock, undock, forceRemove, isDocked, isSupported, getTaskbarInfo,
-  fullscreenWindowOnBarMonitor, placeBehind,
+  fullscreenWindowOnBarMonitor, placeBehind, buriedUnderNormalWindow,
 };

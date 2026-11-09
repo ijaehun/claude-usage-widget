@@ -2047,7 +2047,7 @@ app.whenReady().then(async () => {
   // did clear it.
   setInterval(() => {
     if (mainWindow && !mainWindow.isDestroyed() && !isDodging()
-        && !mainWindow.isAlwaysOnTop()) {
+        && (!mainWindow.isAlwaysOnTop() || appbar.buriedUnderNormalWindow())) {
       const alwaysOnTopSetting = store.get('settings.alwaysOnTop', true);
       if (alwaysOnTopSetting) {
         mainWindow.setAlwaysOnTop(true, 'floating');
