@@ -1425,11 +1425,11 @@ function onFullscreenApp(opening) {
   }
 }
 
-// Foreground changed or a window drag started/ended: restack the bar like the
-// taskbar (see appbar.settleZOrder).
-function onZOrderEvent(dragged) {
+// Foreground changed or a window moved: restack the bar like the taskbar (see
+// appbar.settleZOrder).
+function onZOrderEvent() {
   if (!mainWindow || mainWindow.isDestroyed() || isDodging() || !store.get('settings.alwaysOnTop', true)) return;
-  appbar.settleZOrder(dragged);
+  appbar.settleZOrder();
 }
 
 // Bar mode: dock the widget to a screen edge as a Windows appbar. Returns the

@@ -68,6 +68,7 @@ let MonitorFromWindow = null;
 let FindWindowExW = null;
 let GetWindow = null;
 let IsWindowVisible = null;
+let GetWindowLongW = null;
 let DwmGetFlag = null;
 let DwmGetRect = null;
 let SetWinEventHook = null;
@@ -124,6 +125,7 @@ function ensureLoaded() {
     );
     GetWindow = user32.func('uintptr_t __stdcall GetWindow(uintptr_t hWnd, uint32 uCmd)');
     IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(uintptr_t hWnd)');
+    GetWindowLongW = user32.func('int32 __stdcall GetWindowLongW(uintptr_t hWnd, int nIndex)');
     const dwmapi = koffi.load('dwmapi.dll');
     DwmGetFlag = dwmapi.func('int32 __stdcall DwmGetWindowAttribute(uintptr_t hWnd, uint32 attr, _Out_ uint32 *value, uint32 size)');
     DwmGetRect = dwmapi.func('int32 __stdcall DwmGetWindowAttribute(uintptr_t hWnd, uint32 attr, _Out_ APPBAR_RECT *value, uint32 size)');
@@ -352,23 +354,32 @@ function visibleFrame(h) {
  * it); in front otherwise. Plainly sitting behind the taskbar is not enough —
  * windows Windows puts in front of the taskbar often end right at the bar's
  * top edge, and their drop shadow lands on the bar.
- * `dragged` is a window being moved right now, which counts as covering.
+ * Called on every window move, so it only touches the z-order when it is wrong.
  */
-function settleZOrder(dragged = 0) {
+function settleZOrder() {
   if (!state) return;
   try {
     const tb = taskbarOnBarMonitor();
     const bar = {};
     if (!tb || !GetWindowRect(state.hwnd, bar)) return;
-    const GW_HWNDPREV = 3;
+    const GW_HWNDNEXT = 2, GW_HWNDPREV = 3, GWL_EXSTYLE = -20, WS_EX_TOPMOST = 0x8;
     let cover = 0;
     for (let h = Number(GetWindow(tb, GW_HWNDPREV)), i = 0; h && i < 1000; h = Number(GetWindow(h, GW_HWNDPREV)), i++) {
       if (h === state.hwnd) continue;
-      const r = h === dragged ? bar : visibleFrame(h);
+      const r = visibleFrame(h);
       if (r && r.left < bar.right && r.right > bar.left && r.top < bar.bottom && r.bottom > bar.top) cover = h;
     }
     state.covered = !!cover;
-    placeBehind(cover || -1); // -1 = HWND_TOPMOST
+    if (cover) {
+      if (Number(GetWindow(cover, GW_HWNDNEXT)) !== state.hwnd) placeBehind(cover);
+      return;
+    }
+    // On top means topmost with no ordinary window above it.
+    let wrong = !(GetWindowLongW(state.hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST);
+    for (let h = Number(GetWindow(state.hwnd, GW_HWNDPREV)), i = 0; !wrong && h && i < 1000; h = Number(GetWindow(h, GW_HWNDPREV)), i++) {
+      wrong = IsWindowVisible(h) && !(GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_TOPMOST);
+    }
+    if (wrong) placeBehind(-1); // HWND_TOPMOST
   } catch {}
 }
 
@@ -394,7 +405,7 @@ function isDocked() {
  * @param {'top'|'bottom'|'left'|'right'} edgeName
  * @param {number} thickness Bar size in DIP (height for top/bottom).
  * @param {(opening: boolean) => void} [onFullscreen] ABN_FULLSCREENAPP handler.
- * @param {(dragged: number) => void} [onZOrder] Called when the foreground changes or a window drag starts/ends.
+ * @param {() => void} [onZOrder] Called when the foreground changes or a window moves.
  * @returns {boolean} true if the appbar was registered
  */
 function dock(win, edgeName = 'bottom', thickness = 34, onFullscreen = null, onZOrder = null) {
@@ -439,17 +450,24 @@ function dock(win, edgeName = 'bottom', thickness = 34, onFullscreen = null, onZ
   applyBounds(reservePosition());
 
   // Windows reorders windows against the taskbar when the foreground changes,
-  // and a dragged window can slide over the bar. The shell reports both, so
-  // the bar's z-order is settled exactly then instead of on a timer.
+  // and moving a window (a drag, or a Win+arrow snap) can slide it over the bar
+  // or lift it above the bar with no foreground or drag event at all. The shell
+  // reports both, so the bar is settled then instead of on a timer. Location
+  // events also fire for the mouse cursor; only window moves (idObject 0)
+  // count, and a burst of them is settled once.
   if (onZOrder) {
     try {
-      const EVENT_SYSTEM_FOREGROUND = 3, EVENT_SYSTEM_MOVESIZESTART = 0x0A, EVENT_SYSTEM_MOVESIZEEND = 0x0B;
+      const EVENT_SYSTEM_FOREGROUND = 3, EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
       const WINEVENT_SKIPOWNPROCESS = 2;
-      const cb = koffi.register((hook, event, hwnd) => onZOrder(event === EVENT_SYSTEM_MOVESIZESTART ? Number(hwnd) : 0),
-        koffi.pointer(WinEventProc));
+      let queued = false;
+      const cb = koffi.register((hook, event, hwnd, idObject) => {
+        if (idObject !== 0 || queued) return;
+        queued = true;
+        setTimeout(() => { queued = false; onZOrder(); }, 0);
+      }, koffi.pointer(WinEventProc));
       const hooks = [
         SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, cb, 0, 0, WINEVENT_SKIPOWNPROCESS),
-        SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART, EVENT_SYSTEM_MOVESIZEEND, 0, cb, 0, 0, WINEVENT_SKIPOWNPROCESS),
+        SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, 0, cb, 0, 0, WINEVENT_SKIPOWNPROCESS),
       ];
       state.foregroundHook = () => { hooks.forEach((h) => UnhookWinEvent(h)); koffi.unregister(cb); };
     } catch (err) {
