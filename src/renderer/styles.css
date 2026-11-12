@@ -2102,7 +2102,7 @@ body.bar-mode .widget-container {
     border-radius: 0;
     box-shadow: none;
     height: 100%;
-    background: #17171a;
+    background: rgba(23, 23, 26, 0.8);
 }
 
 body.bar-mode .title-bar,
@@ -2347,7 +2347,7 @@ body.logged-out .dock-btn {
    the light theme only lightens it enough to stay legible on light setups. */
 body.theme-light.bar-mode,
 body.theme-light.bar-mode .widget-container {
-    background: #f2f2f4;
+    background: rgba(242, 242, 244, 0.8);
 }
 
 body.theme-light .bar-key { color: #6b6b6b; }

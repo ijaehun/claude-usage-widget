@@ -1377,6 +1377,7 @@ function isDodging() {
 function restoreAlwaysOnTop() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.setAlwaysOnTop(store.get('settings.alwaysOnTop', true), 'floating');
+  if (store.get('settings.alwaysOnTop', true)) appbar.settleZOrder();
 }
 
 // Win32 handle of the main window, for the z-order call below.
@@ -1422,6 +1423,13 @@ function onFullscreenApp(opening) {
     fullscreenDodging = false;
     if (!flyoutDodging) restoreAlwaysOnTop();
   }
+}
+
+// Foreground changed or a window drag started/ended: restack the bar like the
+// taskbar (see appbar.settleZOrder).
+function onZOrderEvent(dragged) {
+  if (!mainWindow || mainWindow.isDestroyed() || isDodging() || !store.get('settings.alwaysOnTop', true)) return;
+  appbar.settleZOrder(dragged);
 }
 
 // Bar mode: dock the widget to a screen edge as a Windows appbar. Returns the
@@ -1483,7 +1491,7 @@ function applyBarMode(enabled, edge) {
   }
 
   fullscreenDodging = false;
-  const ok = appbar.dock(mainWindow, targetEdge, BAR_HEIGHT, onFullscreenApp);
+  const ok = appbar.dock(mainWindow, targetEdge, BAR_HEIGHT, onFullscreenApp, onZOrderEvent);
   debugLog('[BarMode] dock=' + ok + ' bounds=' + JSON.stringify(mainWindow.getBounds()));
   if (!ok) store.delete('preDockBounds');
   store.set('settings.barMode', ok);
@@ -2047,7 +2055,7 @@ app.whenReady().then(async () => {
   // did clear it.
   setInterval(() => {
     if (mainWindow && !mainWindow.isDestroyed() && !isDodging()
-        && (!mainWindow.isAlwaysOnTop() || appbar.buriedUnderNormalWindow())) {
+        && !mainWindow.isAlwaysOnTop() && !appbar.isCovered()) {
       const alwaysOnTopSetting = store.get('settings.alwaysOnTop', true);
       if (alwaysOnTopSetting) {
         mainWindow.setAlwaysOnTop(true, 'floating');

@@ -65,10 +65,14 @@ let SetWindowPos = null;
 let GetWindowRect = null;
 let GetForegroundWindow = null;
 let MonitorFromWindow = null;
+let FindWindowExW = null;
 let GetWindow = null;
-let GetWindowLongW = null;
 let IsWindowVisible = null;
-let DwmGetWindowAttribute = null;
+let DwmGetFlag = null;
+let DwmGetRect = null;
+let SetWinEventHook = null;
+let UnhookWinEvent = null;
+let WinEventProc = null;
 let APPBARDATA = null;
 let loadError = null;
 
@@ -115,12 +119,17 @@ function ensureLoaded() {
     );
     GetForegroundWindow = user32.func('uintptr_t __stdcall GetForegroundWindow()');
     MonitorFromWindow = user32.func('uintptr_t __stdcall MonitorFromWindow(uintptr_t hWnd, uint32 dwFlags)');
-    GetWindow = user32.func('uintptr_t __stdcall GetWindow(uintptr_t hWnd, uint32 uCmd)');
-    GetWindowLongW = user32.func('int32 __stdcall GetWindowLongW(uintptr_t hWnd, int nIndex)');
-    IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(uintptr_t hWnd)');
-    DwmGetWindowAttribute = koffi.load('dwmapi.dll').func(
-      'int32 __stdcall DwmGetWindowAttribute(uintptr_t hWnd, uint32 attr, _Out_ uint32 *value, uint32 size)'
+    FindWindowExW = user32.func(
+      'uintptr_t __stdcall FindWindowExW(uintptr_t hWndParent, uintptr_t hWndChildAfter, str16 lpszClass, str16 lpszWindow)'
     );
+    GetWindow = user32.func('uintptr_t __stdcall GetWindow(uintptr_t hWnd, uint32 uCmd)');
+    IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(uintptr_t hWnd)');
+    const dwmapi = koffi.load('dwmapi.dll');
+    DwmGetFlag = dwmapi.func('int32 __stdcall DwmGetWindowAttribute(uintptr_t hWnd, uint32 attr, _Out_ uint32 *value, uint32 size)');
+    DwmGetRect = dwmapi.func('int32 __stdcall DwmGetWindowAttribute(uintptr_t hWnd, uint32 attr, _Out_ APPBAR_RECT *value, uint32 size)');
+    WinEventProc = koffi.proto('void __stdcall WinEventProc(uintptr_t hHook, uint32 event, uintptr_t hwnd, int32 idObject, int32 idChild, uint32 idThread, uint32 time)');
+    SetWinEventHook = user32.func('uintptr_t __stdcall SetWinEventHook(uint32 eventMin, uint32 eventMax, uintptr_t hmod, WinEventProc *fn, uint32 pid, uint32 tid, uint32 flags)');
+    UnhookWinEvent = user32.func('bool __stdcall UnhookWinEvent(uintptr_t hHook)');
     return true;
   } catch (err) {
     loadError = err.message;
@@ -315,30 +324,57 @@ function placeBehind(hwnd) {
   }
 }
 
-/**
- * True when an ordinary (non-topmost) window sits above the bar and overlaps
- * it. The bar keeps its topmost flag in this state, so the flag check alone
- * misses it. Seen with PowerPoint snapped to half the screen: its drop shadow
- * lay over the bar until the bar was clicked.
- */
-function buriedUnderNormalWindow() {
-  if (!state) return false;
-  try {
-    const bar = {};
-    if (!GetWindowRect(state.hwnd, bar)) return false;
-    const GW_HWNDPREV = 3, GWL_EXSTYLE = -20, WS_EX_TOPMOST = 0x8, DWMWA_CLOAKED = 14;
-    let h = Number(GetWindow(state.hwnd, GW_HWNDPREV));
-    for (let i = 0; h && i < 1000; i++, h = Number(GetWindow(h, GW_HWNDPREV))) {
-      if (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_TOPMOST) continue;
-      if (!IsWindowVisible(h)) continue;
-      const cloaked = [0];
-      if (DwmGetWindowAttribute(h, DWMWA_CLOAKED, cloaked, 4) === 0 && cloaked[0]) continue;
-      const r = {};
-      if (GetWindowRect(h, r) && r.left < bar.right && r.right > bar.left
-          && r.top < bar.bottom && r.bottom > bar.top) return true;
+function taskbarOnBarMonitor() {
+  const MONITOR_DEFAULTTONEAREST = 2;
+  const mon = Number(MonitorFromWindow(state.hwnd, MONITOR_DEFAULTTONEAREST));
+  for (const cls of ['Shell_TrayWnd', 'Shell_SecondaryTrayWnd']) {
+    let h = 0;
+    while ((h = Number(FindWindowExW(0, h, cls, null)))) {
+      if (Number(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST)) === mon) return h;
     }
+  }
+  return 0;
+}
+
+// Visible frame (no invisible resize border) of a shown, uncloaked window.
+function visibleFrame(h) {
+  const DWMWA_EXTENDED_FRAME_BOUNDS = 9, DWMWA_CLOAKED = 14;
+  if (!IsWindowVisible(h)) return null;
+  const cloaked = [0];
+  if (DwmGetFlag(h, DWMWA_CLOAKED, cloaked, 4) === 0 && cloaked[0]) return null;
+  const r = {};
+  return DwmGetRect(h, DWMWA_EXTENDED_FRAME_BOUNDS, r, 16) === 0 ? r : null;
+}
+
+/**
+ * Stack the bar the way the taskbar looks: behind a window only while that
+ * window is in front of the taskbar AND covers the bar (e.g. dragged down over
+ * it); in front otherwise. Plainly sitting behind the taskbar is not enough —
+ * windows Windows puts in front of the taskbar often end right at the bar's
+ * top edge, and their drop shadow lands on the bar.
+ * `dragged` is a window being moved right now, which counts as covering.
+ */
+function settleZOrder(dragged = 0) {
+  if (!state) return;
+  try {
+    const tb = taskbarOnBarMonitor();
+    const bar = {};
+    if (!tb || !GetWindowRect(state.hwnd, bar)) return;
+    const GW_HWNDPREV = 3;
+    let cover = 0;
+    for (let h = Number(GetWindow(tb, GW_HWNDPREV)), i = 0; h && i < 1000; h = Number(GetWindow(h, GW_HWNDPREV)), i++) {
+      if (h === state.hwnd) continue;
+      const r = h === dragged ? bar : visibleFrame(h);
+      if (r && r.left < bar.right && r.right > bar.left && r.top < bar.bottom && r.bottom > bar.top) cover = h;
+    }
+    state.covered = !!cover;
+    placeBehind(cover || -1); // -1 = HWND_TOPMOST
   } catch {}
-  return false;
+}
+
+/** Whether settleZOrder() put the bar behind a window on purpose. */
+function isCovered() {
+  return !!(state && state.covered);
 }
 
 // --- Public API -------------------------------------------------------------
@@ -358,9 +394,10 @@ function isDocked() {
  * @param {'top'|'bottom'|'left'|'right'} edgeName
  * @param {number} thickness Bar size in DIP (height for top/bottom).
  * @param {(opening: boolean) => void} [onFullscreen] ABN_FULLSCREENAPP handler.
+ * @param {(dragged: number) => void} [onZOrder] Called when the foreground changes or a window drag starts/ends.
  * @returns {boolean} true if the appbar was registered
  */
-function dock(win, edgeName = 'bottom', thickness = 34, onFullscreen = null) {
+function dock(win, edgeName = 'bottom', thickness = 34, onFullscreen = null, onZOrder = null) {
   if (!ensureLoaded()) return false;
   if (state) undock();
 
@@ -401,6 +438,25 @@ function dock(win, edgeName = 'bottom', thickness = 34, onFullscreen = null) {
 
   applyBounds(reservePosition());
 
+  // Windows reorders windows against the taskbar when the foreground changes,
+  // and a dragged window can slide over the bar. The shell reports both, so
+  // the bar's z-order is settled exactly then instead of on a timer.
+  if (onZOrder) {
+    try {
+      const EVENT_SYSTEM_FOREGROUND = 3, EVENT_SYSTEM_MOVESIZESTART = 0x0A, EVENT_SYSTEM_MOVESIZEEND = 0x0B;
+      const WINEVENT_SKIPOWNPROCESS = 2;
+      const cb = koffi.register((hook, event, hwnd) => onZOrder(event === EVENT_SYSTEM_MOVESIZESTART ? Number(hwnd) : 0),
+        koffi.pointer(WinEventProc));
+      const hooks = [
+        SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, cb, 0, 0, WINEVENT_SKIPOWNPROCESS),
+        SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART, EVENT_SYSTEM_MOVESIZEEND, 0, cb, 0, 0, WINEVENT_SKIPOWNPROCESS),
+      ];
+      state.foregroundHook = () => { hooks.forEach((h) => UnhookWinEvent(h)); koffi.unregister(cb); };
+    } catch (err) {
+      console.error('[AppBar] z-order hooks failed:', err.message);
+    }
+  }
+
   // Tell the shell the window is live so it participates in z-order correctly.
   SHAppBarMessage(ABM_ACTIVATE, newData(hwnd, { lParam: 1 }));
   SHAppBarMessage(ABM_WINDOWPOSCHANGED, newData(hwnd));
@@ -413,8 +469,9 @@ function dock(win, edgeName = 'bottom', thickness = 34, onFullscreen = null) {
 /** Release the reserved space and restore the window to a normal floating one. */
 function undock() {
   if (!state) return;
-  const { hwnd, unhook } = state;
+  const { hwnd, unhook, foregroundHook } = state;
   if (unhook) unhook();
+  if (foregroundHook) foregroundHook();
   try {
     SHAppBarMessage(ABM_REMOVE, newData(hwnd));
   } catch (err) {
@@ -428,6 +485,7 @@ function undock() {
 /** undock() without touching the (already destroyed) window. */
 function forceRemove() {
   if (!state) return;
+  if (state.foregroundHook) state.foregroundHook();
   try {
     SHAppBarMessage(ABM_REMOVE, newData(state.hwnd));
   } catch { /* nothing left to do */ }
@@ -448,5 +506,5 @@ function getTaskbarInfo() {
 
 module.exports = {
   dock, undock, forceRemove, isDocked, isSupported, getTaskbarInfo,
-  fullscreenWindowOnBarMonitor, placeBehind, buriedUnderNormalWindow,
+  fullscreenWindowOnBarMonitor, placeBehind, settleZOrder, isCovered,
 };
