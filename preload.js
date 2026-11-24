@@ -78,6 +78,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServiceStatus: () => ipcRenderer.invoke('get-service-status'),
   // Codex service health (status.openai.com)
   getCodexServiceStatus: () => ipcRenderer.invoke('get-codex-service-status'),
+  // Lab GPU servers: the GPUs this account is running on (src/gpu-portal.js)
+  getGpuPortal: () => ipcRenderer.invoke('get-gpu-portal'),
   toggleStatusPanel: (payload) => ipcRenderer.invoke('toggle-status-panel', payload),
 
   // OpenAI Codex plan limits, read from Codex's local session logs

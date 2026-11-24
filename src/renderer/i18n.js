@@ -131,6 +131,7 @@ const I18N_KO = {
     'Warn at': '경고 기준',
     'Date format': '날짜 형식',
     'Auto-refresh': '자동 새로고침',
+    'Server account': '서버 계정',
     'Every 15s': '15초마다',
     'Every 30s': '30초마다',
     'Every 1 min': '1분마다',

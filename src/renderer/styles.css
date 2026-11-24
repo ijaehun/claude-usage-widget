@@ -2089,6 +2089,31 @@ body.theme-light .timer-progress.codex:not(.elapsed-warn):not(.elapsed-soon) { s
 body.theme-light .bar-brand.bar-brand-codex { color: #3f3f46; }
 body.theme-light .bar-group.bar-group-codex { border-left-color: rgba(0, 0, 0, 0.12); }
 
+/* Lab GPU servers sit just left of the system group; the line keeps them from
+   reading as more of this PC's own stats. */
+.bar-group.bar-group-servers {
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
+    padding-right: 10px;
+}
+body.theme-light .bar-group.bar-group-servers { border-right-color: rgba(0, 0, 0, 0.12); }
+.bar-servers { gap: 14px; font: inherit; color: inherit; }
+.gpu-bars {
+    display: inline-flex;
+    gap: 2px;
+    height: 14px;
+}
+.gpu-bar {
+    display: flex;
+    align-items: flex-end;
+    width: 5px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 1px;
+    overflow: hidden;
+}
+.gpu-bar > span { width: 100%; background: #34d399; }
+.gpu-bar > span.hot { background: #ef4444; }
+body.theme-light .gpu-bar { background: rgba(0, 0, 0, 0.1); }
+
 /* ===========================================================================
    Bar mode — the docked appbar strip. The window here is the full width of a
    screen edge and only BAR_HEIGHT tall, so this layout is a single row: no

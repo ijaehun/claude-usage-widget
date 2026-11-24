@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('statusPanel', {
   getCodexServiceStatus: () => ipcRenderer.invoke('get-codex-service-status'),
   // The system panel (system-panel.html) shares this window and bridge.
   getSystemStats: () => ipcRenderer.invoke('get-system-stats'),
+  // And the lab GPU server panel (servers-panel.html).
+  getGpuPortal: () => ipcRenderer.invoke('get-gpu-portal'),
   close: () => ipcRenderer.send('close-status-panel'),
   // The only URLs the panel ever opens. Passing them from here rather than
   // taking one from the page means there is nothing to validate: main.js

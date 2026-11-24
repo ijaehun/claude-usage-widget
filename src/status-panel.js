@@ -44,7 +44,7 @@ const FADE_OUT_MS = 160;
 
 let panel = null;
 let closedAt = 0;
-// Which page is (or last was) showing: 'status' or 'system'. Two indicators
+// Which page is (or last was) showing: 'status', 'system' or 'servers'. Two indicators
 // can share the one window, so toggling is per kind.
 let openKind = null;
 let closedKind = null;
@@ -89,7 +89,7 @@ function placement(parentWindow, anchor, height) {
  * @param {'light'|'dark'} theme
  * @param {'both'|'claude'|'codex'} services - which sections to show
  * @param {'en'|'ko'} lang - the widget's resolved UI language
- * @param {'status'|'system'} kind - service status, or the machine's CPU/GPU/RAM
+ * @param {'status'|'system'|'servers'} kind - service status, the machine's CPU/GPU/RAM, or lab GPU servers
  */
 async function open(parentWindow, anchor, theme, services, lang, kind) {
   if (!parentWindow || parentWindow.isDestroyed()) return;
@@ -133,7 +133,7 @@ async function open(parentWindow, anchor, theme, services, lang, kind) {
   });
 
   openKind = kind;
-  const page = kind === 'system' ? 'system-panel.html' : 'status-panel.html';
+  const page = { system: 'system-panel.html', servers: 'servers-panel.html' }[kind] || 'status-panel.html';
   const url = `file://${path.join(__dirname, 'renderer', page)}` +
     `?theme=${theme === 'light' ? 'light' : 'dark'}` +
     `&services=${['claude', 'codex'].includes(services) ? services : 'both'}` +

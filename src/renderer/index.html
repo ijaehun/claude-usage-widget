@@ -492,6 +492,14 @@
 
                 <div class="bar-spacer" id="barDragHandle"></div>
 
+                <!-- Lab GPU servers this account is running on (src/gpu-portal.js):
+                     per server its name, a small bar per GPU and the average.
+                     Click opens the detail popup, as the status and system dots do.
+                     Hidden when there are none or the portal is out of reach. -->
+                <div class="bar-group bar-group-servers" id="barServersGroup" style="display: none;">
+                    <button class="bar-status bar-servers" id="barServersBtn" title="Server details"></button>
+                </div>
+
                 <div class="bar-group bar-group-system">
                     <!-- Head of the group, as the service dots head theirs. -->
                     <button class="bar-status" id="barSysDotBtn" title="System details" data-i18n-title>
@@ -688,6 +696,14 @@
                                     <option value="120" data-i18n>Every 2 min</option>
                                     <option value="300" selected data-i18n>Every 5 min</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- Row 7: lab GPU server account (src/gpu-portal.js). Empty = off. -->
+                        <div class="settings-row-2col">
+                            <div class="settings-col">
+                                <span class="settings-row-label" data-i18n>Server account</span>
+                                <input type="text" id="gpuPortalUser" class="settings-select" spellcheck="false" autocomplete="off">
                             </div>
                         </div>
 

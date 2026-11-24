@@ -22,7 +22,7 @@ const WIDGET_ROW_HEIGHT = 30;
 const LOGIN_HEIGHT = 360; // login screen, Log in + Manual buttons in view
 // Settings panel, footer included. Measured: the footer ends at 327 (the Track
 // dropdown is taller than the toggle it sits beside); 318 already clipped 2px.
-const SETTINGS_HEIGHT = 328;
+const SETTINGS_HEIGHT = 360;
 const GRAPH_HEIGHT = 232;
 
 // --- System monitor (local machine CPU / GPU / VRAM / RAM) ---
@@ -1191,6 +1191,7 @@ function updateCompactResets() {
 }
 
 async function refreshSystemStats() {
+    refreshGpuPortal();
     let stats;
     try {
         stats = await window.electronAPI.getSystemStats();
@@ -1260,6 +1261,8 @@ function wireSysmonPanel() {
         const btn = document.getElementById(id);
         if (btn) btn.addEventListener('click', () => toggleStatusPanel(btn, 'system'));
     }
+    const servers = document.getElementById('barServersBtn');
+    servers.addEventListener('click', () => toggleStatusPanel(servers, 'servers'));
 }
 
 /** Green, or red while any resource is past the hot threshold. */
@@ -1439,6 +1442,65 @@ function startServiceStatusPolling() {
     if (statusTimer) return;
     refreshServiceStatus();
     statusTimer = setInterval(refreshServiceStatus, STATUS_INTERVAL);
+}
+
+// --- Lab GPU servers (src/gpu-portal.js) ---------------------------------------
+
+/**
+ * Per server: its name, one small vertical bar per GPU this account runs on
+ * there (count of bars = count of GPUs, height = utilisation), and their
+ * average. Clicking opens the per-GPU popup (servers-panel.html).
+ */
+function renderGpuPortal(mine) {
+    const group = document.getElementById('barServersGroup');
+    const btn = document.getElementById('barServersBtn');
+    const gpus = (mine && mine.gpus) || [];
+    const byServer = new Map();
+    for (const g of gpus) {
+        if (!byServer.has(g.server)) byServer.set(g.server, []);
+        byServer.get(g.server).push(g);
+    }
+    btn.replaceChildren(...[...byServer].map(([server, list]) => {
+        const item = document.createElement('span');
+        item.className = 'bar-item';
+        const key = document.createElement('span');
+        key.className = 'bar-key';
+        key.textContent = server;
+        const bars = document.createElement('span');
+        bars.className = 'gpu-bars';
+        for (const g of list) {
+            const bar = document.createElement('span');
+            bar.className = 'gpu-bar';
+            const fill = document.createElement('span');
+            const util = Math.min(100, Math.max(0, g.util || 0));
+            fill.style.height = util + '%';
+            fill.classList.toggle('hot', util >= SYSMON_HOT_THRESHOLD);
+            bar.append(fill);
+            bars.append(bar);
+        }
+        const val = document.createElement('span');
+        val.className = 'bar-val';
+        const avg = list.reduce((s, g) => s + (g.util || 0), 0) / list.length;
+        val.textContent = Math.round(avg) + '%';
+        val.classList.toggle('hot', avg >= SYSMON_HOT_THRESHOLD);
+        item.append(key, bars, val);
+        return item;
+    }));
+    group.style.display = gpus.length ? '' : 'none';
+}
+
+let lastGpuPortal = '';
+
+async function refreshGpuPortal() {
+    try {
+        const mine = await window.electronAPI.getGpuPortal();
+        const key = JSON.stringify(mine && mine.gpus);
+        if (key === lastGpuPortal) return;
+        lastGpuPortal = key;
+        renderGpuPortal(mine);
+    } catch (err) {
+        console.warn('GPU portal unavailable:', err);
+    }
 }
 // --- OpenAI Codex plan limits ------------------------------------------------
 
@@ -2708,6 +2770,7 @@ async function loadSettings() {
     if (elements.compactModeToggle) elements.compactModeToggle.checked = !!settings.compactMode;
     elements.servicesSelect.value = services || 'both';
     elements.languageSelect.value = settings.language || 'auto';
+    document.getElementById('gpuPortalUser').value = settings.gpuPortalUser || '';
 
     // Populate org selector if user has organizations
     if (credentials.organizations && credentials.organizations.length > 0) {
@@ -2758,7 +2821,8 @@ async function saveSettings() {
         graphVisible: graphVisible,
         expandedOpen: isExpanded,
         services: elements.servicesSelect.value || 'both',
-        language: elements.languageSelect.value || 'auto'
+        language: elements.languageSelect.value || 'auto',
+        gpuPortalUser: document.getElementById('gpuPortalUser').value.trim()
     };
     await window.electronAPI.saveSettings(settings);
     window._cachedSettings = settings;

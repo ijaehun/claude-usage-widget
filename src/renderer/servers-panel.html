@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'none';
+        script-src 'self';
+        style-src 'self';
+        font-src 'self';
+        img-src 'self' data:;
+        connect-src 'none';
+    ">
+    <title>Servers</title>
+    <!-- Same popup and stylesheet as the system panel; rows reuse its sys-* rules. -->
+    <link rel="stylesheet" href="status-panel.css">
+</head>
+
+<body>
+    <div class="panel" id="panel">
+        <div class="panel-head">
+            <span class="panel-title system">Servers</span>
+            <span class="panel-overall" id="srvUpdated"></span>
+        </div>
+        <div class="panel-rows" id="srvRows"></div>
+    </div>
+    <script src="servers-panel.js"></script>
+</body>
+
+</html>

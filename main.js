@@ -5,6 +5,7 @@ const { fetchViaWindow, fetchMultipleViaWindow } = require('./src/fetch-via-wind
 const { normalizeUsageLimits } = require('./src/normalize-usage-limits');
 const systemStats = require('./src/system-stats');
 const serviceStatus = require('./src/service-status');
+const gpuPortal = require('./src/gpu-portal');
 const codexUsage = require('./src/codex-usage');
 const chatgptUsage = require('./src/chatgpt-usage');
 const statusPanel = require('./src/status-panel');
@@ -1278,6 +1279,9 @@ ipcMain.handle('get-service-status', () => serviceStatus.getStatus());
 // Codex's, from status.openai.com — same module, same cache-only read.
 ipcMain.handle('get-codex-service-status', () => serviceStatus.getCodexStatus());
 
+// Lab GPU servers: only the GPUs settings.gpuPortalUser is running on.
+ipcMain.handle('get-gpu-portal', () => gpuPortal.getMine());
+
 // OpenAI Codex plan limits, parsed from Codex's local session logs. Also served
 // from a cached sample; see src/codex-usage.js for where the numbers come from.
 ipcMain.handle('get-codex-usage', () => codexUsage.getUsage());
@@ -1329,7 +1333,8 @@ ipcMain.handle('toggle-status-panel', (event, { anchor, theme, lang, kind } = {}
   // Which sections the panel shows follows the Track setting.
   const services = store.get('settings.services', 'both') || 'both';
   // The same popup also carries the CPU/GPU/VRAM/RAM detail page.
-  return statusPanel.toggle(mainWindow, anchor, theme, services, lang, kind === 'system' ? 'system' : 'status');
+  return statusPanel.toggle(mainWindow, anchor, theme, services, lang,
+    ['system', 'servers'].includes(kind) ? kind : 'status');
 });
 
 // Esc, and following the link out. User-facing, so it fades rather than
@@ -1572,7 +1577,9 @@ ipcMain.handle('get-settings', () => {
     // 'both' | 'claude' | 'codex'; null until the first-run chooser answers.
     services: store.get('settings.services', null),
     // 'auto' (follow Windows) | 'en' | 'ko'
-    language: store.get('settings.language', 'auto')
+    language: store.get('settings.language', 'auto'),
+    // Lab GPU server account; empty leaves the server check off.
+    gpuPortalUser: store.get('settings.gpuPortalUser', '')
   };
 });
 
@@ -1603,6 +1610,11 @@ ipcMain.handle('save-settings', (event, settings) => {
   }
   if (['auto', 'en', 'ko'].includes(settings.language)) {
     store.set('settings.language', settings.language);
+  }
+  if (typeof settings.gpuPortalUser === 'string') {
+    store.set('settings.gpuPortalUser', settings.gpuPortalUser);
+    gpuPortal.stop();
+    gpuPortal.start(settings.gpuPortalUser);
   }
 
   const isPortable = process.platform === 'win32' && !!process.env.PORTABLE_EXECUTABLE_FILE;
@@ -1993,6 +2005,7 @@ app.whenReady().then(async () => {
 
   systemStats.start();
   serviceStatus.start();
+  gpuPortal.start(store.get('settings.gpuPortalUser', ''));
   codexUsage.start();
   chatgptUsage.start({ refreshToken: loadChatgptRefresh(), onRefreshToken: saveChatgptRefresh });
 
@@ -2083,6 +2096,7 @@ app.on('before-quit', () => {
   isQuitting = true;
   systemStats.stop();
   serviceStatus.stop();
+  gpuPortal.stop();
   codexUsage.stop();
   chatgptUsage.stop();
   trayFlyout.stop();
