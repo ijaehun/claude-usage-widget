@@ -1279,7 +1279,7 @@ ipcMain.handle('get-service-status', () => serviceStatus.getStatus());
 // Codex's, from status.openai.com — same module, same cache-only read.
 ipcMain.handle('get-codex-service-status', () => serviceStatus.getCodexStatus());
 
-// Lab GPU servers: only the GPUs settings.gpuPortalUser is running on.
+// Lab GPU servers: the GPUs settings.gpuPortalUser is running on, plus free ones.
 ipcMain.handle('get-gpu-portal', () => gpuPortal.getMine());
 
 // OpenAI Codex plan limits, parsed from Codex's local session logs. Also served

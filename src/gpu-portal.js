@@ -4,7 +4,8 @@
  * gpu-portal.js
  *
  * The lab GPU servers' portal (campus network only) answers /api/mine?user=
- * with just the GPUs that account is running on — about 100 bytes. Off campus
+ * with the GPUs that account is running on plus where free GPUs are — a few
+ * hundred bytes. Off campus
  * the request fails, the snapshot goes stale, and the bar hides the group.
  *
  * The portal uses a self-signed certificate, so certificate checks are off for
@@ -24,7 +25,7 @@ let user = '';
 let timer = null;
 let failures = 0;
 let generation = 0;
-let sample = null; // { at, gpus, down }
+let sample = null; // { at, gpus, down, free }
 
 function fetchMine() {
   return new Promise((resolve, reject) => {
@@ -56,6 +57,7 @@ async function poll() {
       at: Date.now(),
       gpus: Array.isArray(json.gpus) ? json.gpus : [],
       down: Array.isArray(json.down) ? json.down : [],
+      free: Array.isArray(json.free) ? json.free : [],
     };
     failures = 0;
   } catch {
@@ -84,7 +86,7 @@ function stop() {
 /** Cached snapshot, or null when off, unreachable, or stale. */
 function getMine() {
   if (!user || !sample || Date.now() - sample.at > STALE_MS) return null;
-  return { gpus: sample.gpus, down: sample.down };
+  return { gpus: sample.gpus, down: sample.down, free: sample.free };
 }
 
 module.exports = { start, stop, getMine };

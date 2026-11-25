@@ -2096,7 +2096,9 @@ body.theme-light .bar-group.bar-group-codex { border-left-color: rgba(0, 0, 0, 0
     padding-right: 10px;
 }
 body.theme-light .bar-group.bar-group-servers { border-right-color: rgba(0, 0, 0, 0.12); }
-.bar-servers { gap: 14px; font: inherit; color: inherit; }
+.bar-servers { gap: 10px; font: inherit; color: inherit; }
+/* The Available count is a short number, not a percentage column. */
+#barServersBtn .bar-val { min-width: 0; }
 .gpu-bars {
     display: inline-flex;
     gap: 2px;

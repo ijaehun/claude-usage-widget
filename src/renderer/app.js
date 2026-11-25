@@ -1447,9 +1447,10 @@ function startServiceStatusPolling() {
 // --- Lab GPU servers (src/gpu-portal.js) ---------------------------------------
 
 /**
- * Per server: its name, one small vertical bar per GPU this account runs on
- * there (count of bars = count of GPUs, height = utilisation), and their
- * average. Clicking opens the per-GPU popup (servers-panel.html).
+ * Per server: its name and one small vertical bar per GPU this account runs on
+ * there (count of bars = count of GPUs, height = utilisation); then how many
+ * GPUs are free on the lab servers. Clicking opens the per-GPU popup
+ * (servers-panel.html), which has the exact numbers.
  */
 function renderGpuPortal(mine) {
     const group = document.getElementById('barServersGroup');
@@ -1465,7 +1466,8 @@ function renderGpuPortal(mine) {
         item.className = 'bar-item';
         const key = document.createElement('span');
         key.className = 'bar-key';
-        key.textContent = server;
+        // "h200x4" → "h200": the bars already show how many GPUs; the popup keeps full names.
+        key.textContent = server.replace(/x\d+/, '');
         const bars = document.createElement('span');
         bars.className = 'gpu-bars';
         for (const g of list) {
@@ -1478,15 +1480,22 @@ function renderGpuPortal(mine) {
             bar.append(fill);
             bars.append(bar);
         }
-        const val = document.createElement('span');
-        val.className = 'bar-val';
-        const avg = list.reduce((s, g) => s + (g.util || 0), 0) / list.length;
-        val.textContent = Math.round(avg) + '%';
-        val.classList.toggle('hot', avg >= SYSMON_HOT_THRESHOLD);
-        item.append(key, bars, val);
+        item.append(key, bars);
         return item;
     }));
-    group.style.display = gpus.length ? '' : 'none';
+    if (mine) {
+        const item = document.createElement('span');
+        item.className = 'bar-item';
+        const key = document.createElement('span');
+        key.className = 'bar-key';
+        key.textContent = 'Available';
+        const val = document.createElement('span');
+        val.className = 'bar-val';
+        val.textContent = mine.free.length;
+        item.append(key, val);
+        btn.append(item);
+    }
+    group.style.display = mine ? '' : 'none';
 }
 
 let lastGpuPortal = '';
@@ -1494,7 +1503,7 @@ let lastGpuPortal = '';
 async function refreshGpuPortal() {
     try {
         const mine = await window.electronAPI.getGpuPortal();
-        const key = JSON.stringify(mine && mine.gpus);
+        const key = JSON.stringify(mine && [mine.gpus, mine.free]);
         if (key === lastGpuPortal) return;
         lastGpuPortal = key;
         renderGpuPortal(mine);
